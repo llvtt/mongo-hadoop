@@ -16,12 +16,9 @@
 
 package com.mongodb.hadoop.mapred.input;
 
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
-import com.mongodb.MongoException;
+import com.mongodb.BasicDBObject;
 import com.mongodb.hadoop.input.MongoInputSplit;
 import com.mongodb.hadoop.io.BSONWritable;
-import com.mongodb.hadoop.util.MongoConfigUtil;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.mapred.InputSplit;
@@ -35,27 +32,16 @@ import java.io.IOException;
 public class MongoRecordReader implements RecordReader<BSONWritable, BSONWritable> {
 
     private static final Log LOG = LogFactory.getLog(MongoRecordReader.class);
+    private final com.mongodb.hadoop.input.MongoRecordReader delegate;
     
-    private final DBCursor cursor;
-    private BSONWritable currentVal = new BSONWritable();
-    private BSONWritable currentKey = new BSONWritable();
-    private float seen = 0;
-    private float total;
-    private String keyField;
-
     private MongoInputSplit split;
 
     public MongoRecordReader(final MongoInputSplit split) {
-        this.split = split;
-        cursor = split.getCursor();
-        keyField = split.getKeyField();
+        delegate = new com.mongodb.hadoop.input.MongoRecordReader(split);
     }
 
     public void close() {
-        if (cursor != null) {
-            cursor.close();
-            MongoConfigUtil.close(cursor.getCollection().getDB().getMongo());
-        }
+        delegate.close();
     }
 
 
@@ -68,23 +54,19 @@ public class MongoRecordReader implements RecordReader<BSONWritable, BSONWritabl
     }
 
     public BSONWritable getCurrentKey() {
-        return this.currentKey;
+        // TODO: support keys that aren't DBObjects, just like we already
+        // do in the Hadoop 2.0 MongoRecordReader.
+        return new BSONWritable(
+                new BasicDBObject("_id", delegate.getCurrentKey())
+        );
     }
 
     public BSONWritable getCurrentValue() {
-        return this.currentVal;
+        return new BSONWritable(delegate.getCurrentValue());
     }
 
     public float getProgress() {
-        try {
-            if (cursor.hasNext()) {
-                return 0.0f;
-            } else {
-                return 1.0f;
-            }
-        } catch (MongoException e) {
-            return 1.0f;
-        }
+        return delegate.getProgress();
     }
 
     public long getPos() {
@@ -92,32 +74,23 @@ public class MongoRecordReader implements RecordReader<BSONWritable, BSONWritabl
     }
 
     public void initialize(final InputSplit split, final TaskAttemptContext context) {
-        total = 1.0f;
+        // delegate doesn't use either of these arguments, so no point in
+        // massaging our arguments to fit the Hadoop 2.0 API.
+        delegate.initialize(null, null);
     }
 
     public boolean nextKeyValue() throws IOException {
-        try {
-            if (!cursor.hasNext()) {
-                LOG.info("Read " + seen + " documents from:");
-                LOG.info(split.toString());
-                return false;
-            }
-
-            DBObject next = cursor.next();
-            this.currentVal.setDoc(next);
-            this.currentKey.setDoc(new BasicBSONObject("_id", next.get("_id")));
-            seen++;
-
-            return true;
-        } catch (MongoException e) {
-            throw new IOException("Couldn't get next key/value from mongodb: ", e);
-        }
+        return delegate.nextKeyValue();
     }
 
     public boolean next(final BSONWritable key, final BSONWritable value) throws IOException {
         if (nextKeyValue()) {
-            key.setDoc(this.currentKey.getDoc());
-            value.setDoc(this.currentVal.getDoc());
+            // TODO: support keys that aren't DBObjects, just like we already
+            // do in the Hadoop 2.0 MongoRecordReader.
+            BasicBSONObject keyDoc = new BasicBSONObject(
+                    "_id", delegate .getCurrentKey());
+            key.setDoc(keyDoc);
+            value.setDoc(delegate.getCurrentValue());
             return true;
         } else {
             LOG.info("Cursor exhausted.");

@@ -71,7 +71,7 @@ public class BSONFileRecordReader extends RecordReader<NullWritable, BSONObject>
     private BSONDecoder decoder;
 
     @Override
-    public void initialize(final InputSplit inputSplit, final TaskAttemptContext context) throws IOException, InterruptedException {
+    public void initialize(final InputSplit inputSplit, final TaskAttemptContext context) throws IOException {
         fileSplit = (FileSplit) inputSplit;
         final Configuration configuration = context.getConfiguration();
         if (LOG.isDebugEnabled()) {
@@ -91,8 +91,18 @@ public class BSONFileRecordReader extends RecordReader<NullWritable, BSONObject>
         }
     }
 
+    public long getPos() throws IOException {
+        if (finished) {
+            return fileSplit.getStart() + fileSplit.getLength();
+        }
+        if (in != null) {
+            return in.getPos();
+        }
+        return fileSplit.getStart();
+    }
+
     @Override
-    public boolean nextKeyValue() throws IOException, InterruptedException {
+    public boolean nextKeyValue() throws IOException {
         try {
             if (in.getPos() >= fileSplit.getStart() + fileSplit.getLength()) {
                 try {
@@ -125,17 +135,17 @@ public class BSONFileRecordReader extends RecordReader<NullWritable, BSONObject>
     }
 
     @Override
-    public NullWritable getCurrentKey() throws IOException, InterruptedException {
+    public NullWritable getCurrentKey() throws IOException {
         return NullWritable.get();
     }
 
     @Override
-    public BSONObject getCurrentValue() throws IOException, InterruptedException {
+    public BSONObject getCurrentValue() throws IOException {
         return value;
     }
 
     @Override
-    public float getProgress() throws IOException, InterruptedException {
+    public float getProgress() throws IOException {
         if (finished) {
             return 1f;
         }

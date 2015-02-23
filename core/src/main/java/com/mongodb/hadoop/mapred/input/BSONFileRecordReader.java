@@ -17,106 +17,64 @@
 package com.mongodb.hadoop.mapred.input;
 
 import com.mongodb.hadoop.io.BSONWritable;
-import com.mongodb.hadoop.util.MongoConfigUtil;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.RecordReader;
-import org.bson.BSONCallback;
-import org.bson.BSONDecoder;
-import org.bson.BSONObject;
-import org.bson.BasicBSONCallback;
-import org.bson.BasicBSONDecoder;
-import org.bson.LazyBSONCallback;
-import org.bson.LazyBSONDecoder;
+import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.TaskAttemptID;
+import org.apache.hadoop.mapreduce.task.TaskAttemptContextImpl;
 
 import java.io.IOException;
 
-import static java.lang.String.format;
 
-public class BSONFileRecordReader implements RecordReader<NullWritable, BSONWritable> {
-    private static final Log LOG = LogFactory.getLog(BSONFileRecordReader.class);
+public class BSONFileRecordReader implements  RecordReader<NullWritable, BSONWritable> {
+    private final com.mongodb.hadoop.input.BSONFileRecordReader delegate =
+            new com.mongodb.hadoop.input.BSONFileRecordReader();
 
-    private FileSplit fileSplit;
-    private FSDataInputStream in;
-    private int numDocsRead = 0;
-    private boolean finished = false;
-
-    private BSONCallback callback;
-    private BSONDecoder decoder;
+    /**
+     * Shim class to wrap a Configuration in a TaskAttemptContext for
+     * compatibility with the Hadoop 2.0 interface. Instances of this class
+     * have a fake TaskAttemptID.
+     *
+     * The new-style BSONFileRecordReader can check if its TaskAttemptContext
+     * is a TaskAttemptContextShim to determine if the context actually has
+     * valid data besides the wrapped Configuration.
+     */
+    public class TaskAttemptContextShim extends TaskAttemptContextImpl {
+        public TaskAttemptContextShim(final Configuration conf) {
+            super(conf, new TaskAttemptID());
+        }
+    }
 
     public void initialize(final InputSplit inputSplit, final Configuration conf) throws IOException {
-        fileSplit = (FileSplit) inputSplit;
-        Path file = fileSplit.getPath();
-        FileSystem fs = file.getFileSystem(conf);
-        in = fs.open(file, 16 * 1024 * 1024);
-        in.seek(fileSplit.getStart());
-        if (MongoConfigUtil.getLazyBSON(conf)) {
-            callback = new LazyBSONCallback();
-            decoder = new LazyBSONDecoder();
-        } else {
-            callback = new BasicBSONCallback();
-            decoder = new BasicBSONDecoder();
-        }
+        FileSplit fileSplit = (FileSplit) inputSplit;
+        org.apache.hadoop.mapreduce.lib.input.FileSplit newInputSplit =
+                new org.apache.hadoop.mapreduce.lib.input.FileSplit(
+                        fileSplit.getPath(),
+                        fileSplit.getStart(),
+                        fileSplit.getLength(),
+                        fileSplit.getLocations()
+                );
+        delegate.initialize(newInputSplit, new TaskAttemptContextShim(conf));
+    }
+
+    public long getPos() throws IOException {
+        return delegate.getPos();
     }
 
     @Override
     public boolean next(final NullWritable key, final BSONWritable value) throws IOException {
-        try {
-            if (in.getPos() >= fileSplit.getStart() + fileSplit.getLength()) {
-                try {
-                    close();
-                } catch (final Exception e) {
-                    LOG.warn(e.getMessage(), e);
-                }
-                return false;
-            }
-
-            callback.reset();
-            decoder.decode(in, callback);
-            BSONObject bo = (BSONObject) callback.get();
-            value.setDoc(bo);
-
-            numDocsRead++;
-            if (LOG.isDebugEnabled() && numDocsRead % 5000 == 0) {
-                LOG.debug(String.format("read %d docs from %s at %d", numDocsRead, fileSplit, in.getPos()));
-            }
+        if (delegate.nextKeyValue()) {
+            value.setDoc(delegate.getCurrentValue());
             return true;
-        } catch (final Exception e) {
-            LOG.error(format("Error reading key/value from bson file on line %d: %s", numDocsRead, e.getMessage()));
-            try {
-                close();
-            } catch (final Exception e2) {
-                LOG.warn(e2.getMessage(), e2);
-            }
-            return false;
         }
+        return false;
     }
 
     public float getProgress() throws IOException {
-        if (finished) {
-            return 1f;
-        }
-        if (in != null) {
-            return (float) (in.getPos() - fileSplit.getStart()) / fileSplit.getLength();
-        }
-        return 0f;
-    }
-
-    public long getPos() throws IOException {
-        if (finished) {
-            return fileSplit.getStart() + fileSplit.getLength();
-        }
-        if (in != null) {
-            return in.getPos();
-        }
-        return fileSplit.getStart();
+        return delegate.getProgress();
     }
 
     @Override
@@ -131,13 +89,7 @@ public class BSONFileRecordReader implements RecordReader<NullWritable, BSONWrit
 
     @Override
     public void close() throws IOException {
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("closing bson file split.");
-        }
-        finished = true;
-        if (in != null) {
-            in.close();
-        }
+        delegate.close();
     }
 
 }
