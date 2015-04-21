@@ -33,6 +33,14 @@ public class EnronMailReducer extends Reducer<MailPair, IntWritable, BSONWritabl
     implements org.apache.hadoop.mapred.Reducer<MailPair, IntWritable, BSONWritable, IntWritable> {
 
     private static final Log LOG = LogFactory.getLog(EnronMailReducer.class);
+    private BSONWritable reduceResult;
+    private IntWritable intw;
+
+    public EnronMailReducer() {
+        super();
+        reduceResult = new BSONWritable();
+        intw = new IntWritable();
+    }
 
     @Override
     public void reduce(final MailPair pKey, final Iterable<IntWritable> pValues, final Context pContext)
@@ -42,9 +50,10 @@ public class EnronMailReducer extends Reducer<MailPair, IntWritable, BSONWritabl
             sum += value.get();
         }
         BSONObject outDoc = BasicDBObjectBuilder.start().add("f", pKey.from).add("t", pKey.to).get();
-        BSONWritable pkeyOut = new BSONWritable(outDoc);
+        reduceResult.setDoc(outDoc);
+        intw.set(sum);
 
-        pContext.write(pkeyOut, new IntWritable(sum));
+        pContext.write(reduceResult, intw);
     }
 
     @Override
@@ -56,9 +65,10 @@ public class EnronMailReducer extends Reducer<MailPair, IntWritable, BSONWritabl
             sum += values.next().get();
         }
         BSONObject outDoc = BasicDBObjectBuilder.start().add("f", key.from).add("t", key.to).get();
-        BSONWritable pkeyOut = new BSONWritable(outDoc);
+        reduceResult.setDoc(outDoc);
+        intw.set(sum);
 
-        output.collect(pkeyOut, new IntWritable(sum));
+        output.collect(reduceResult, intw);
     }
 
     @Override

@@ -49,6 +49,15 @@ public class TreasuryYieldXMLConfigV2 extends Configured implements Tool {
 
     static class TreasuryYieldMapperV2 extends MapReduceBase implements Mapper<BSONWritable, BSONWritable, IntWritable, DoubleWritable> {
 
+        private IntWritable intw;
+        private DoubleWritable doublew;
+
+        public TreasuryYieldMapperV2() {
+            super();
+            intw = new IntWritable();
+            doublew = new DoubleWritable();
+        }
+
         @Override
         @SuppressWarnings("deprecation")
         public void map(final BSONWritable key, final BSONWritable value, final OutputCollector<IntWritable, DoubleWritable> output,
@@ -56,12 +65,21 @@ public class TreasuryYieldXMLConfigV2 extends Configured implements Tool {
             throws IOException {
             final int year = ((Date) value.getDoc().get("_id")).getYear() + 1900;
             double bid10Year = ((Number) value.getDoc().get("bc10Year")).doubleValue();
-            output.collect(new IntWritable(year), new DoubleWritable(bid10Year));
+            intw.set(year);
+            doublew.set(bid10Year);
+            output.collect(intw, doublew);
         }
 
     }
 
     static class TreasuryYieldReducerV2 extends MapReduceBase implements Reducer<IntWritable, DoubleWritable, IntWritable, BSONWritable> {
+
+        private BSONWritable reduceResult;
+
+        public TreasuryYieldReducerV2() {
+            super();
+            reduceResult = new BSONWritable();
+        }
 
         @Override
         public void reduce(final IntWritable key, final Iterator<DoubleWritable> values,
@@ -81,7 +99,8 @@ public class TreasuryYieldXMLConfigV2 extends Configured implements Tool {
             outputObj.put("count", count);
             outputObj.put("avg", avg);
             outputObj.put("sum", sum);
-            output.collect(key, new BSONWritable(outputObj));
+            reduceResult.setDoc(outputObj);
+            output.collect(key, reduceResult);
         }
 
     }
