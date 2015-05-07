@@ -185,6 +185,8 @@ public class MongoTool extends Configured implements Tool {
         job.setJarByClass(getClass());
         final Class<? extends Mapper> mapper = MongoConfigUtil.getMapper(conf);
 
+        LOG.info("setting mapper class to " + mapper.getName());
+
         if (LOG.isDebugEnabled()) {
             LOG.debug("Mapper Class: " + mapper);
             LOG.debug("Input URI: " + conf.get(MongoConfigUtil.INPUT_URI));
