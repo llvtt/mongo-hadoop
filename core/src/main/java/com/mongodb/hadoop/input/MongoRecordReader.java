@@ -48,7 +48,6 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
         if (cursor != null) {
             // Only close the client after we're done with all the cursors.
             if (openRecordReaders <= 0) {
-                LOG.info("*** close(): closing client!");
                 MongoConfigUtil.close(
                   cursor.getCollection().getDB().getMongo());
             }
