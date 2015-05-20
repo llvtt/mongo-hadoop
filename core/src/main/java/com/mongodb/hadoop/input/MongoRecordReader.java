@@ -16,8 +16,6 @@
 
 package com.mongodb.hadoop.input;
 
-// Mongo
-
 import com.mongodb.DBCursor;
 import com.mongodb.MongoException;
 import com.mongodb.hadoop.util.MongoConfigUtil;
@@ -30,10 +28,14 @@ import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.bson.BSONObject;
 
-// Hadoop
-// Commons
-
 public class MongoRecordReader extends RecordReader<Object, BSONObject> {
+
+    private static final Log LOG = LogFactory.getLog(MongoRecordReader.class);
+    private BSONObject current;
+    private final MongoInputSplit split;
+    private final DBCursor cursor;
+    private float seen = 0;
+    private static transient int openRecordReaders;
 
     public MongoRecordReader(final MongoInputSplit split) {
         this.split = split;
@@ -42,9 +44,15 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
 
     @Override
     public void close() {
+        openRecordReaders--;
         if (cursor != null) {
+            // Only close the client after we're done with all the cursors.
+            if (openRecordReaders <= 0) {
+                LOG.info("*** close(): closing client!");
+                MongoConfigUtil.close(
+                  cursor.getCollection().getDB().getMongo());
+            }
             cursor.close();
-            MongoConfigUtil.close(cursor.getCollection().getDB().getMongo());
         }
     }
 
@@ -59,6 +67,7 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
         return current;
     }
 
+    @Override
     public float getProgress() {
         try {
             return cursor.hasNext() ? 0.0f : 1.0f;
@@ -68,8 +77,9 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     }
 
     @Override
-    public void initialize(final InputSplit split, final TaskAttemptContext context) {
-        total = 1.0f;
+    public void initialize(
+      final InputSplit split, final TaskAttemptContext context) {
+        openRecordReaders++;
     }
 
     @Override
@@ -90,14 +100,4 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
             return false;
         }
     }
-
-
-    private BSONObject current;
-    private final MongoInputSplit split;
-    private final DBCursor cursor;
-    private float seen = 0;
-    private float total;
-
-    private static final Log LOG = LogFactory.getLog(MongoRecordReader.class);
-
 }
