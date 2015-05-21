@@ -35,7 +35,8 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     private final MongoInputSplit split;
     private final DBCursor cursor;
     private float seen = 0;
-    private static transient int openRecordReaders;
+    private static int openRecordReaders;
+    private static final Object openRecordReadersLock = new Object();
 
     public MongoRecordReader(final MongoInputSplit split) {
         this.split = split;
@@ -44,7 +45,9 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
 
     @Override
     public void close() {
-        openRecordReaders--;
+        synchronized (openRecordReadersLock) {
+            openRecordReaders--;
+        }
         if (cursor != null) {
             cursor.close();
             // Only close the client after we're done with all the cursors.
@@ -78,7 +81,9 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     @Override
     public void initialize(
       final InputSplit split, final TaskAttemptContext context) {
-        openRecordReaders++;
+        synchronized (openRecordReadersLock) {
+            openRecordReaders++;
+        }
     }
 
     @Override
