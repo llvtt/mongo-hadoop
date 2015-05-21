@@ -47,13 +47,14 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     public void close() {
         synchronized (openRecordReadersLock) {
             openRecordReaders--;
-        }
-        if (cursor != null) {
-            cursor.close();
-            // Only close the client after we're done with all the cursors.
-            if (openRecordReaders <= 0) {
-                MongoConfigUtil.close(
-                  cursor.getCollection().getDB().getMongo());
+
+            if (cursor != null) {
+                cursor.close();
+                // Only close the client after we're done with all the cursors.
+                if (openRecordReaders <= 0) {
+                    MongoConfigUtil.close(
+                      cursor.getCollection().getDB().getMongo());
+                }
             }
         }
     }
