@@ -40,6 +40,7 @@ public class MongoRecordReader implements RecordReader<BSONWritable, BSONWritabl
 
     public MongoRecordReader(final MongoInputSplit split) {
         delegate = new com.mongodb.hadoop.input.MongoRecordReader(split);
+        delegate.initialize(null, null);
     }
 
     @Override
@@ -91,7 +92,6 @@ public class MongoRecordReader implements RecordReader<BSONWritable, BSONWritabl
 
     public void initialize(
       final InputSplit split, final TaskAttemptContext context) {
-        delegate.initialize(null, null);
     }
 
     public boolean nextKeyValue() throws IOException {
