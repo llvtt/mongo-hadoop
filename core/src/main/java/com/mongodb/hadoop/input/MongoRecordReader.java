@@ -33,7 +33,7 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     private static final Log LOG = LogFactory.getLog(MongoRecordReader.class);
     private BSONObject current;
     private final MongoInputSplit split;
-    private final DBCursor cursor;
+    private DBCursor cursor;
     private float seen = 0;
     private static int openRecordReaders;
     private static final Object openRecordReadersLock = new Object();
@@ -41,7 +41,6 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
 
     public MongoRecordReader(final MongoInputSplit split) {
         this.split = split;
-        cursor = split.getCursor();
     }
 
     @Override
@@ -89,6 +88,10 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
       final InputSplit split, final TaskAttemptContext context) {
         synchronized (openRecordReadersLock) {
             openRecordReaders++;
+        }
+        // TODO: this change breaks old-style MRR
+        synchronized (WTFLock) {
+            this.cursor = this.split.getCursor();
         }
     }
 
