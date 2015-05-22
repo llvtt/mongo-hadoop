@@ -62,6 +62,7 @@ CREATE EXTERNAL TABLE send_recip_counted (
     >,
     count INT
 )
+STORED BY 'com.mongodb.hadoop.hive.MongoStorageHandler'
 WITH SERDEPROPERTIES ("mongo.columns.mapping"="{'id':'_id'}")
 TBLPROPERTIES('mongo.uri'="mongodb://localhost:27017/mongo_hadoop.hive_message_pairs");
 

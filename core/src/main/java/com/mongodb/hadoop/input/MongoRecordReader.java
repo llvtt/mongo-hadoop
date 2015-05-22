@@ -27,24 +27,23 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
-import org.apache.hadoop.mapreduce.TaskAttemptID;
 import org.bson.BSONObject;
 
 import java.util.HashMap;
 
 public class MongoRecordReader extends RecordReader<Object, BSONObject> {
 
+    private static final Log LOG = LogFactory.getLog(MongoRecordReader.class);
+    // Locking to protect the client from being closed while MongoRecordReaders
+    // are still iterating cursors created by it.
     private static final HashMap<MongoClientURI, CountLock> CLIENTS_MAP =
       new HashMap<MongoClientURI, CountLock>();
     private final CountLock lock;
-    private static final Log LOG = LogFactory.getLog(MongoRecordReader.class);
     private BSONObject current;
     private final MongoInputSplit split;
     private DBCursor cursor;
     private float seen = 0;
-
-    // DEBUG only
-    TaskAttemptID tid;
+    private float totalDocs = 0;
 
     public MongoRecordReader(final MongoInputSplit split) {
         this.split = split;
@@ -82,12 +81,10 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     public void close() {
         synchronized (lock) {
             lock.dec();
-            LOG.info("*** close() called for tid: " + tid + "; lock now = " + lock.getCount());
             if (cursor != null) {
                 cursor.close();
                 // Only close the client after we're done with all the cursors.
                 if (lock.getCount() <= 0) {
-                    LOG.info("*** CLOSING CLIENT on tid: " + tid);
                     MongoConfigUtil.close(
                       cursor.getCollection().getDB().getMongo());
                 }
@@ -109,9 +106,7 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     @Override
     public float getProgress() {
         try {
-            synchronized (lock) {
-                return cursor.hasNext() ? 0.0f : 1.0f;
-            }
+            return totalDocs > 0 ? Math.max(seen / totalDocs, 1.0f) : 0.0f;
         } catch (MongoException e) {
             return 1.0f;
         }
@@ -120,12 +115,10 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     @Override
     public void initialize(
       final InputSplit split, final TaskAttemptContext context) {
-        tid = context.getTaskAttemptID();
-        // TODO: this change breaks old-style MRR
         synchronized (lock) {
             this.cursor = this.split.getCursor();
+            totalDocs = this.cursor.count();
             lock.inc();
-            LOG.info("*** initialize() called on tid: " + tid + "; count = " + lock.getCount());
         }
     }
 
@@ -133,19 +126,10 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     public boolean nextKeyValue() {
         try {
             synchronized (lock) {
-                // We assume the lock has a nonzero count here... why?
-                // - because we assume we called initialize() previous to this,
-                // - which increments the counter.
-                try {
-                    if (!cursor.hasNext()) {
-                        LOG.info("Read " + seen + " documents from:");
-                        LOG.info(split.toString());
-                        return false;
-                    }
-                } catch (IllegalStateException ise) {
-                    LOG.info("Caught ISE with count: " + lock.getCount()
-                      + "; TID: " + tid.toString());
-                    throw ise;
+                if (!cursor.hasNext()) {
+                    LOG.info("Read " + seen + " documents from:");
+                    LOG.info(split.toString());
+                    return false;
                 }
 
                 current = cursor.next();
