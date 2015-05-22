@@ -4,16 +4,18 @@
 -- counts the numbers exchanged between each pair of people
 
 -- Get the headers struct, which contains the "from" and "to".
--- except the words "from", "to", and "date" are reserved in Hive
+-- except the words "from", "to", and "date" are reserved in Hive 
 DROP TABLE raw;
 
 CREATE EXTERNAL TABLE raw(
     h STRUCT<hivefrom:STRING,hiveto:STRING>
 )
-STORED BY 'com.mongodb.hadoop.hive.MongoStorageHandler'
+ROW FORMAT SERDE "com.mongodb.hadoop.hive.BSONSerDe"
 WITH SERDEPROPERTIES("mongo.columns.mapping"="{'h.hivefrom':'headers.From',
  'h.hiveto':'headers.To'}")
-TBLPROPERTIES('mongo.uri'="mongodb://localhost:27017/mongo_hadoop.messages");
+STORED AS INPUTFORMAT "com.mongodb.hadoop.mapred.BSONFileInputFormat"
+OUTPUTFORMAT "com.mongodb.hadoop.hive.output.HiveBSONFileOutputFormat"
+LOCATION '${INPUT}';
 
 
 DROP TABLE send_recip;
@@ -24,19 +26,19 @@ CREATE TABLE send_recip (
 
 -- Strip the white space from the "hiveto" string
 -- Then split the comma delimited string into an array of strings
-INSERT OVERWRITE TABLE send_recip
-SELECT
+INSERT OVERWRITE TABLE send_recip 
+SELECT 
     h.hivefrom AS f,
-    split(h.hiveto, "\\s*,\\s*")
+    split(h.hiveto, "\\s*,\\s*") 
         AS t_array
 FROM raw
-WHERE h IS NOT NULL
+WHERE h IS NOT NULL 
     AND h.hiveto IS NOT NULL;
 
 
 DROP TABLE send_recip_explode;
 CREATE TABLE send_recip_explode (
-    f STRING,
+    f STRING, 
     t STRING,
     num INT
 );
@@ -45,9 +47,9 @@ CREATE TABLE send_recip_explode (
 -- own row. Then group by the unique "f" and "t" pair
 -- to find the number of emails between the sender and receiver
 INSERT OVERWRITE TABLE send_recip_explode
-SELECT
-    f,
-    t,
+SELECT 
+    f, 
+    t, 
     count(1) AS num
 FROM send_recip
     LATERAL VIEW explode(t_array) tmpTable AS t
@@ -55,20 +57,22 @@ GROUP BY f, t;
 
 
 DROP TABLE send_recip_counted;
-CREATE EXTERNAL TABLE send_recip_counted (
+CREATE TABLE send_recip_counted (
     id STRUCT<
-        t : STRING,
+        t : STRING, 
         f : STRING
     >,
     count INT
 )
-STORED BY 'com.mongodb.hadoop.hive.MongoStorageHandler'
+ROW FORMAT SERDE "com.mongodb.hadoop.hive.BSONSerDe"
 WITH SERDEPROPERTIES ("mongo.columns.mapping"="{'id':'_id'}")
-TBLPROPERTIES('mongo.uri'="mongodb://localhost:27017/mongo_hadoop.hive_message_pairs");
+STORED AS INPUTFORMAT "com.mongodb.hadoop.mapred.BSONFileInputFormat"
+OUTPUTFORMAT "com.mongodb.hadoop.hive.output.HiveBSONFileOutputFormat"
+LOCATION '${OUTPUT}';
 
 -- Final output with the correct format
 INSERT INTO TABLE send_recip_counted
-SELECT
+SELECT 
     named_struct('t', t, 'f', f) AS id,
     num AS count
 FROM send_recip_explode;
