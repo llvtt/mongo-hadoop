@@ -52,9 +52,7 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
             MongoClientURI key = split.getInputURI();
             if (CLIENTS_MAP.containsKey(key)) {
                 lock = CLIENTS_MAP.get(key);
-                LOG.info("*** retrieve lock for key: " + key + "; count=" + lock.getCount());
             } else {
-                LOG.info("*** create lock for key: " + key);
                 lock = new CountLock();
                 CLIENTS_MAP.put(key, lock);
             }
