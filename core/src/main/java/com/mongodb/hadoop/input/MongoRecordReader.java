@@ -37,6 +37,7 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     private float seen = 0;
     private static int openRecordReaders;
     private static final Object openRecordReadersLock = new Object();
+    private static final Object WTFLock = new Object();
 
     public MongoRecordReader(final MongoInputSplit split) {
         this.split = split;
@@ -45,15 +46,17 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
 
     @Override
     public void close() {
-        synchronized (openRecordReadersLock) {
-            openRecordReaders--;
+        synchronized (WTFLock) {
+            synchronized (openRecordReadersLock) {
+                openRecordReaders--;
 
-            if (cursor != null) {
-                cursor.close();
-                // Only close the client after we're done with all the cursors.
-                if (openRecordReaders <= 0) {
-                    MongoConfigUtil.close(
-                      cursor.getCollection().getDB().getMongo());
+                if (cursor != null) {
+                    cursor.close();
+                    // Only close the client after we're done with all the cursors.
+                    if (openRecordReaders <= 0) {
+                        MongoConfigUtil.close(
+                          cursor.getCollection().getDB().getMongo());
+                    }
                 }
             }
         }
@@ -73,7 +76,9 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     @Override
     public float getProgress() {
         try {
-            return cursor.hasNext() ? 0.0f : 1.0f;
+            synchronized (WTFLock) {
+                return cursor.hasNext() ? 0.0f : 1.0f;
+            }
         } catch (MongoException e) {
             return 1.0f;
         }
@@ -90,14 +95,16 @@ public class MongoRecordReader extends RecordReader<Object, BSONObject> {
     @Override
     public boolean nextKeyValue() {
         try {
-            if (!cursor.hasNext()) {
-                LOG.info("Read " + seen + " documents from:");
-                LOG.info(split.toString());
-                return false;
-            }
+            synchronized (WTFLock) {
+                if (!cursor.hasNext()) {
+                    LOG.info("Read " + seen + " documents from:");
+                    LOG.info(split.toString());
+                    return false;
+                }
 
-            current = cursor.next();
-            seen++;
+                current = cursor.next();
+                seen++;
+            }
 
             return true;
         } catch (MongoException e) {
