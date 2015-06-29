@@ -167,6 +167,15 @@ public class MongoInsertStorage extends StoreFunc implements StoreMetadata {
     public void setStoreLocation(final String location, final Job job) throws IOException {
         final Configuration config = job.getConfiguration();
         LOG.info("Store Location Config: " + config + " For URI: " + location);
+        try {
+            LOG.info(
+              "Output format class is set to: " + job.getOutputFormatClass
+                ());
+        } catch (ClassNotFoundException e) {
+            LOG.info("output format class is undefined.");
+        }
+        LOG.info("Output committer is " + config.get("mapred.output.committer" +
+              ".class", "undefined"));
         if (!location.startsWith("mongodb://")) {
             throw new IllegalArgumentException("Invalid URI Format.  URIs must begin with a mongodb:// protocol string.");
         }

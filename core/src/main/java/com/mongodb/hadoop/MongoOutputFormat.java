@@ -35,6 +35,12 @@ public class MongoOutputFormat<K, V> extends OutputFormat<K, V> {
 
     public void checkOutputSpecs(final JobContext context) throws IOException {
         LOG.info("checkOutputSpecs called");
+        try {
+            LOG.info("output format=" + context.getOutputFormatClass());
+        } catch (ClassNotFoundException e) {
+            LOG.info("output format=undefined");
+        }
+
         if (MongoConfigUtil.getOutputURIs(context.getConfiguration()).isEmpty()) {
             throw new IOException("No output URI is specified. You must set mongo.output.uri.");
         }
