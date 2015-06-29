@@ -132,6 +132,8 @@ public class MongoInsertStorage extends StoreFunc implements StoreMetadata {
             throw new IOException("Invalid Record Writer");
         }
 
+        LOG.info("Going to be using record writer: " + writer.getClass());
+
         UDFContext udfc = UDFContext.getUDFContext();
         Properties p = udfc.getUDFProperties(getClass(), new String[]{udfcSignature});
         String strSchema = p.getProperty(SCHEMA_SIGNATURE);

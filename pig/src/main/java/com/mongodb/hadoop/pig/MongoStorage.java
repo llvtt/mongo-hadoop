@@ -213,6 +213,7 @@ public class MongoStorage extends StoreFunc implements StoreMetadata {
         if (recordWriter == null) {
             throw new IOException("Invalid Record Writer");
         }
+        LOG.info("using record writer: " + writer.getClass());
         // Parse the schema from the string stored in the properties object.
 
         UDFContext udfc = UDFContext.getUDFContext();
