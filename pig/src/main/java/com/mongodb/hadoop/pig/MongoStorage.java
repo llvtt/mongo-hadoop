@@ -240,6 +240,7 @@ public class MongoStorage extends StoreFunc implements StoreMetadata {
     }
 
     public OutputFormat getOutputFormat() throws IOException {
+        LOG.info("getOutputFormat called");
         return new MongoOutputFormat();
     }
 
@@ -252,6 +253,8 @@ public class MongoStorage extends StoreFunc implements StoreMetadata {
         final Configuration config = job.getConfiguration();
         LOG.info("Store Location Config: " + config + " For URI: " + location);
         MongoConfigUtil.setOutputURI(config, location);
+        LOG.info("committer in config is set to: " + config.get(
+            "mapred.output.committer.class", "undefined"));
         final Properties properties =
             UDFContext.getUDFContext().getUDFProperties(this.getClass(), new String[]{udfContextSignature});
         config.set(PIG_OUTPUT_SCHEMA, properties.getProperty(PIG_OUTPUT_SCHEMA_UDF_CONTEXT));

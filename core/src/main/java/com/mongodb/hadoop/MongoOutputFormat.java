@@ -19,6 +19,8 @@ package com.mongodb.hadoop;
 import com.mongodb.hadoop.output.MongoOutputCommitter;
 import com.mongodb.hadoop.output.MongoRecordWriter;
 import com.mongodb.hadoop.util.MongoConfigUtil;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.hadoop.mapreduce.OutputCommitter;
 import org.apache.hadoop.mapreduce.OutputFormat;
@@ -28,13 +30,18 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import java.io.IOException;
 
 public class MongoOutputFormat<K, V> extends OutputFormat<K, V> {
+
+    private static final Log LOG = LogFactory.getLog(MongoOutputFormat.class);
+
     public void checkOutputSpecs(final JobContext context) throws IOException {
+        LOG.info("checkOutputSpecs called");
         if (MongoConfigUtil.getOutputURIs(context.getConfiguration()).isEmpty()) {
             throw new IOException("No output URI is specified. You must set mongo.output.uri.");
         }
     }
 
     public OutputCommitter getOutputCommitter(final TaskAttemptContext context) {
+        LOG.info("getOutputCommitter called");
         return new MongoOutputCommitter(
           MongoConfigUtil.getOutputCollections(context.getConfiguration()));
     }
@@ -43,12 +50,15 @@ public class MongoOutputFormat<K, V> extends OutputFormat<K, V> {
      * Get the record writer that points to the output collection.
      */
     public RecordWriter<K, V> getRecordWriter(final TaskAttemptContext context) {
+        LOG.info("getRecordWriter called");
         return new MongoRecordWriter<K, V>(
           MongoConfigUtil.getOutputCollections(context.getConfiguration()),
           context);
     }
 
-    public MongoOutputFormat() {}
+    public MongoOutputFormat() {
+        LOG.info("MongoOutputFormat created.");
+    }
 
     /**
      * @param updateKeys ignored

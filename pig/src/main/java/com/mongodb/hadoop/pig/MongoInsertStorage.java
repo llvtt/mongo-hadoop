@@ -151,6 +151,7 @@ public class MongoInsertStorage extends StoreFunc implements StoreMetadata {
     }
 
     public OutputFormat getOutputFormat() throws IOException {
+        LOG.info("getOutputFormat called");
         return outputFormat;
         //final MongoOutputFormat outputFmt = options == null ? new MongoOutputFormat() : new MongoOutputFormat(options.getUpdate().keys,
         // options.getUpdate().multi);

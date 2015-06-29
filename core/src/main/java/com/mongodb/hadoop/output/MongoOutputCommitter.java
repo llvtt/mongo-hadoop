@@ -47,6 +47,8 @@ public class MongoOutputCommitter extends OutputCommitter {
     public static final String TEMP_DIR_NAME = "_MONGO_OUT_TEMP";
 
     public MongoOutputCommitter(final List<DBCollection> collections) {
+        LOG.info("MongoOutputCommitter created with collections: " +
+            collections);
         this.collections = collections;
         numberOfHosts = this.collections.size();
     }

@@ -51,6 +51,8 @@ public class MongoRecordWriter<K, V> extends RecordWriter<K, V> {
     }
 
     public MongoRecordWriter(final List<DBCollection> c, final TaskAttemptContext ctx) {
+        LOG.info("MongoRecordWriter created with collections: " + c
+            + "; context: " + ctx.getTaskAttemptID());
         collections = new ArrayList<DBCollection>(c);
         context = ctx;
         bsonWritable = new BSONWritable();
