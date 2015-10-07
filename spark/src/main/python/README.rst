@@ -1,7 +1,7 @@
 ``pymongo-spark`` integrates `PyMongo`_, the Python driver for MongoDB, with
-`PySpark`_, the Python front-end for `Apache Spark`_. This package relies
-*heavily* on the `mongo-hadoop`_ project, which must be installed prior to
-using this package.
+`PySpark`_, the Python front-end for `Apache Spark`_. This Python package relies
+*heavily* on the "spark" jar in the mongo-hadoop project, which must be
+installed prior to using this package.
 
 .. _PyMongo: https://pypi.python.org/pypi/pymongo
 .. _PySpark: http://spark.apache.org/docs/latest/api/python/pyspark.html
@@ -11,13 +11,20 @@ using this package.
 Installation
 ------------
 
-The easiest way to install pymongo-spark is with `pip
-<https://pypi.python.org/pypi/pip>`__::
+1. Download `mongo-hadoop`_::
 
-   pip install pymongo-spark
+     git clone https://github.com/mongodb/mongo-hadoop.git
 
-You'll also need to put the ``mongo-hadoop-spark.jar`` from the `mongo-hadoop`_
-project somewhere on Spark's ``CLASSPATH`` prior to using this package.
+2. Go to the pymongo-spark directory of the project and install::
+
+     cd mongo-hadoop/spark/src/main/python
+     python setup.py install
+
+You'll also need to put ``mongo-hadoop-spark.jar`` (can be obtained from Maven
+Central, from the `releases page
+<https://github.com/mongodb/mongo-hadoop/releases>`_ on Github, or `compiled
+yourself <https://github.com/mongodb/mongo-hadoop#building>`_) somewhere on
+Spark's ``CLASSPATH`` prior to using this package.
 
 Usage
 -----
