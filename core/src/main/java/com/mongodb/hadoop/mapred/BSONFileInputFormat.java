@@ -43,6 +43,7 @@ import static java.lang.String.format;
 
 public class BSONFileInputFormat extends FileInputFormat {
 
+    @Override
     protected boolean isSplitable(final FileSystem fs, final Path filename) {
         CompressionCodec codec =
           new CompressionCodecFactory(fs.getConf()).getCodec(filename);
