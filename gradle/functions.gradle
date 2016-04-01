@@ -54,24 +54,42 @@ task downloadEnronEmails() << {
 }
 
 task copyFiles(dependsOn: [installHadoop, installHive, installPig]) << {
-    def hadoopEtc = "${hadoopHome}/etc/hadoop"
-    def hadoopLib = "${hadoopHome}/share/hadoop/common"
+    def hadoopEtc
+    def hadoopLib
+    if (isHadoopV1) {
+        hadoopEtc = "${hadoopHome}/conf"
+        hadoopLib = "${hadoopHome}/lib"
+    } else {
+        hadoopEtc = "${hadoopHome}/etc/hadoop"
+        hadoopLib = "${hadoopHome}/share/hadoop/common"
+    }
 
     println "Updating mongo jars"
-    
+
     safeCopy("core/build/libs/mongo-hadoop-core-${project(':core').version}.jar", hadoopLib, "mongo-hadoop-core.jar")
     safeCopy("streaming/build/libs/mongo-hadoop-streaming-${project(':core').version}.jar", hadoopLib, "mongo-hadoop-streaming.jar")
     safeCopy("hive/build/libs/mongo-hadoop-hive-${project(':core').version}.jar", hiveHome + '/lib', "mongo-hadoop-hive.jar")
     safeCopy(findJar(":core", "mongo-java-driver"), hadoopLib, "mongo-java-driver.jar")
     
     println "Updating cluster configuration"
-    copy {
-        from 'clusterConfigs'
-        into hadoopEtc
-        exclude 'hive-site.xml'
-        filter ReplaceTokens, tokens: [
-                HADOOP_BINARIES: hadoopBinaries.toString()
-        ]
+    if ("$hadoopVersion".startsWith("1.")) {
+        copy {
+            from 'clusterConfigs'
+            into "$hadoopHome/conf"
+            exclude 'hive-site.xml'
+            filter ReplaceTokens, tokens: [
+                    HADOOP_BINARIES: hadoopBinaries.toString()
+            ]
+        }
+    } else {
+        copy {
+            from 'clusterConfigs'
+            into hadoopEtc
+            exclude 'hive-site.xml'
+            filter ReplaceTokens, tokens: [
+                    HADOOP_BINARIES: hadoopBinaries.toString()
+            ]
+        }
     }
     copy {
         from 'clusterConfigs'

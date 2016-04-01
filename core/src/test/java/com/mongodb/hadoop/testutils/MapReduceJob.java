@@ -8,6 +8,7 @@ import com.mongodb.hadoop.util.MongoTool;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.InputFormat;
+import org.apache.hadoop.mapreduce.OutputCommitter;
 import org.apache.hadoop.mapreduce.OutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 import org.slf4j.Logger;
@@ -52,6 +53,7 @@ public class MapReduceJob {
     private Class<? extends OutputFormat> outputFormat;
     private Class<? extends org.apache.hadoop.mapred.InputFormat> mapredInputFormat;
     private Class<? extends org.apache.hadoop.mapred.OutputFormat> mapredOutputFormat;
+    private Class<? extends OutputCommitter> outputCommitter;
 
     public MapReduceJob(final String className) {
         this.className = className;
@@ -87,6 +89,12 @@ public class MapReduceJob {
         for (URI outputUri : outputUris) {
             this.outputUris.add(outputUri.toString());
         }
+        return this;
+    }
+
+    public MapReduceJob outputCommitter(
+      final Class<? extends OutputCommitter> outputCommitter) {
+        this.outputCommitter = outputCommitter;
         return this;
     }
 
@@ -228,6 +236,12 @@ public class MapReduceJob {
                           : MongoOutputFormat.class.getName();
             entries.add(new Pair<String, String>(JOB_OUTPUT_FORMAT, name));
             LOG.info(format("No output format defined.  Defaulting to '%s'", name));
+        }
+
+        if (outputCommitter != null) {
+            entries.add(
+              new Pair<String, String>(
+                "mapred.output.committer.class", outputCommitter.getName()));
         }
 
         return entries;

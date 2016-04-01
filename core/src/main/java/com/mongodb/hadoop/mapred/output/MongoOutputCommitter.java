@@ -17,28 +17,23 @@
 
 package com.mongodb.hadoop.mapred.output;
 
-import com.mongodb.DBCollection;
 import org.apache.hadoop.mapred.JobContext;
 import org.apache.hadoop.mapred.OutputCommitter;
 import org.apache.hadoop.mapred.TaskAttemptContext;
 
 import java.io.IOException;
-import java.util.List;
 
+/**
+ * MongoOutputCommitter for legacy mapred API.
+ *
+ * This class is only used to support Pig, which creates the wrong type of
+ * TaskAttemptContext for use with an OutputCommitter under Hadoop 1.x.
+ */
 public class MongoOutputCommitter extends OutputCommitter {
     private final com.mongodb.hadoop.output.MongoOutputCommitter delegate;
 
     public MongoOutputCommitter() {
         delegate = new com.mongodb.hadoop.output.MongoOutputCommitter();
-    }
-
-    /**
-     * @deprecated Use the zero-args constructor instead.
-     * @param collections the MongoDB output collections.
-     */
-    @Deprecated
-    public MongoOutputCommitter(final List<DBCollection> collections) {
-        this();
     }
 
     @Override

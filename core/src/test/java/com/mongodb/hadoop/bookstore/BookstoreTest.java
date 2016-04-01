@@ -7,13 +7,12 @@ import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.hadoop.BSONFileInputFormat;
 import com.mongodb.hadoop.mapred.MongoOutputFormat;
+import com.mongodb.hadoop.mapred.output.MongoOutputCommitter;
 import com.mongodb.hadoop.testutils.BaseHadoopTest;
 import com.mongodb.hadoop.testutils.MapReduceJob;
 import com.mongodb.hadoop.util.MongoClientURIBuilder;
 import org.junit.Assert;
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.net.URI;
@@ -25,7 +24,6 @@ import java.util.List;
 import static org.junit.Assert.assertNotNull;
 
 public class BookstoreTest extends BaseHadoopTest {
-    private static final Logger LOG = LoggerFactory.getLogger(BookstoreTest.class);
     public static final URI INVENTORY_BSON;
 
 
@@ -62,6 +60,7 @@ public class BookstoreTest extends BaseHadoopTest {
         } else {
             job.mapredInputFormat(com.mongodb.hadoop.mapred.BSONFileInputFormat.class);
             job.mapredOutputFormat(MongoOutputFormat.class);
+            job.outputCommitter(MongoOutputCommitter.class);
         }
 
 

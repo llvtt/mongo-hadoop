@@ -59,21 +59,36 @@ def startService(cmd, service) {
     execute("$hadoopHome/bin/${cmd}", [service], new FileOutputStream("${rootDir}/build/logs/${service}.log"), null, true)
 }
 
-def start() {
+def createHiveWarehouse() {
+    print('Creating Hive warehouse directory')
+    execute("$hadoopHome/bin/hadoop", ["fs", "-mkdir", "-p", "hdfs:///user/hive/warehouse"], new FileOutputStream
+            ("${rootDir}/build/logs/hiveserver-mkdir.out"))
+    execute("$hadoopHome/bin/hadoop", ["fs", "-chmod", "g+w", "hdfs:///user/hive/warehouse"], new FileOutputStream
+            ("${rootDir}/build/logs/hiveserver-chmod.out"))
+}
+
+
+def startYarn() {
     startService('hdfs', 'namenode')
     sleep(5000)
     startService('hdfs', 'datanode')
     startService('yarn', 'resourcemanager')
     startService('yarn', 'nodemanager')
+    createHiveWarehouse()
+}
 
-    print('Creating Hive warehouse directory')
-    execute("$hadoopHome/bin/hadoop", ["fs", "-mkdir", "-p", "hdfs:///user/hive/warehouse"], new FileOutputStream
-            ("${rootDir}/build/logs/hiveserver-mkdir.out"))
-    execute("$hadoopHome/bin/hadoop", ["fs", "-chmod", "g+w", "hdfs:///user/hive/warehouse"], new FileOutputStream
-                ("${rootDir}/build/logs/hiveserver-chmod.out"))
+def startHadoop() {
+    println "Starting HDFS"
+    execute("${hadoopHome}/bin/start-dfs.sh", [],
+            new FileOutputStream("${rootDir}/build/logs/start-dfs.out"))
+    println "Starting MapReduce"
+    execute("${hadoopHome}/bin/start-mapred.sh", [],
+            new FileOutputStream("${rootDir}/build/logs/start-mapred.out"))
+    createHiveWarehouse()
 }
 
 def stopAll(signal) {
+    println "shutting down Hadoop"
     stopService(signal, 'NodeManager', 'node manager')
     stopService(signal, 'ResourceManager', 'resource manager')
     stopService(signal, 'DataNode', 'data node')
@@ -81,9 +96,19 @@ def stopAll(signal) {
     stopService(signal, 'RunJar', 'hive server')
 }
 
+def stopHadoop() {
+    execute("$hadoopHome/bin/stop-dfs.sh")
+    execute("$hadoopHome/bin/stop-mapred.sh")
+}
+
 task shutdownCluster() << {
-    stopAll('TERM')
-    stopAll('KILL')
+    println "shutdownCluster"
+    if (isHadoopV1) {
+        stopHadoop()
+    } else {
+        stopAll('TERM')
+        stopAll('KILL')
+    }
 }
 
 task startCluster(dependsOn: [copyFiles]) << {
@@ -94,10 +119,20 @@ task startCluster(dependsOn: [copyFiles]) << {
     delete file("${hadoopBinaries}/hadoop-tmpdir")
 
     println "Formatting HDFS"
-    execute("${hadoopHome}/bin/hdfs", [ 'namenode', '-format', '-force' ], null,
+    def hdfs
+    if (isHadoopV1) {
+        hdfs = "${hadoopHome}/bin/hadoop"
+    } else {
+        hdfs = "${hadoopHome}/bin/hdfs"
+    }
+    execute(hdfs, ['namenode', '-format', '-force'], null,
             new FileOutputStream("${rootDir}/build/logs/namenode-format.out"))
 
-    start()
+    if (isHadoopV1) {
+        startHadoop()
+    } else {
+        startYarn()
+    }
 }
 
 task historicalYield(dependsOn: startCluster) << {
