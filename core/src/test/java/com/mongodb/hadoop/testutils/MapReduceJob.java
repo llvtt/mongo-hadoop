@@ -47,7 +47,7 @@ public class MapReduceJob {
     private final String className;
 
     private final List<String> inputUris = new ArrayList<String>();
-    private final List<String> outputUris = new ArrayList<String>();
+    private MongoClientURI outputUri;
     private File jarPath;
     private Class<? extends InputFormat> inputFormat;
     private Class<? extends OutputFormat> outputFormat;
@@ -71,23 +71,14 @@ public class MapReduceJob {
         return this;
     }
 
-    public MapReduceJob outputUris(final MongoClientURI... outputUris) {
-        for (MongoClientURI outputUri : outputUris) {
-            this.outputUris.add(outputUri.getURI());
-        }
+    public MapReduceJob outputUri(final MongoClientURI uri) {
+        this.outputUri = uri;
         return this;
     }
 
     public MapReduceJob inputUris(final URI... inputUris) {
         for (URI inputUri : inputUris) {
             this.inputUris.add(inputUri.toString());
-        }
-        return this;
-    }
-
-    public MapReduceJob outputUris(final URI... outputUris) {
-        for (URI outputUri : outputUris) {
-            this.outputUris.add(outputUri.toString());
         }
         return this;
     }
@@ -198,17 +189,10 @@ public class MapReduceJob {
             entries.add(new Pair<String, String>(INPUT_URI, inputUri.toString()));
         }
 
-        if (!outputUris.isEmpty()) {
-            StringBuilder outputUri = new StringBuilder();
-            for (String uri : outputUris) {
-                if (outputUri.length() != 0) {
-                    outputUri.append(",");
-                }
-                outputUri.append(uri);
-            }
-            entries.add(new Pair<String, String>(OUTPUT_URI, outputUri.toString()));
+        if (outputUri != null) {
+            entries.add(
+              new Pair<String, String>(OUTPUT_URI, outputUri.toString()));
         }
-        
         if (inputFormat != null) {
             entries.add(new Pair<String, String>(JOB_INPUT_FORMAT, inputFormat.getName()));
         } else if (mapredInputFormat != null) {

@@ -16,7 +16,7 @@ import java.util.concurrent.TimeoutException;
 import static org.junit.Assume.assumeTrue;
 
 public class BaseShardedTest extends TreasuryTest {
-    private static final Log LOG = LogFactory.getLog(BaseShardedTest.class);
+    static final Log LOG = LogFactory.getLog(BaseShardedTest.class);
     private MongoClient shard;
     private MongoClient mongos;
 

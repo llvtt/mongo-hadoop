@@ -431,6 +431,7 @@ public final class MongoConfigUtil {
      */
     public static MongoClientURI getMongoClientURI(final Configuration conf, final String key) {
         final String raw = conf.get(key);
+        LOG.info("getmongoclienturi: raw = " + raw);
         return raw != null && !raw.trim().isEmpty() ? new MongoClientURI(raw) : null;
     }
 
@@ -587,6 +588,7 @@ public final class MongoConfigUtil {
     }
 
     public static MongoClientURI getOutputURI(final Configuration conf) {
+        LOG.info("output uri = " + conf.get(OUTPUT_URI));
         return getMongoClientURI(conf, OUTPUT_URI);
     }
 

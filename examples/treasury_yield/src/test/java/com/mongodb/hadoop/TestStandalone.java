@@ -47,7 +47,7 @@ public class TestStandalone extends TreasuryTest {
             .jar(JOBJAR_PATH)
             .param("mongo.input.notimeout", "true")
             .inputUris(getInputUri())
-            .outputUris(getOutputUri());
+            .outputUri(getOutputUri());
         if (isHadoopV1()) {
             treasuryJob.outputCommitter(MongoOutputCommitter.class);
         }
@@ -65,7 +65,7 @@ public class TestStandalone extends TreasuryTest {
             .jar(JOBJAR_PATH)
             .param(MONGO_SPLITTER_CLASS, MultiMongoCollectionSplitter.class.getName())
             .param(MULTI_COLLECTION_CONF_KEY, collectionSettings().toString())
-            .outputUris(getOutputUri());
+            .outputUri(getOutputUri());
         if (isHadoopV1()) {
             treasuryJob.outputCommitter(MongoOutputCommitter.class);
         }
@@ -83,7 +83,7 @@ public class TestStandalone extends TreasuryTest {
             .jar(JOBJAR_PATH)
             .param(MONGO_SPLITTER_CLASS, MultiMongoCollectionSplitter.class.getName())
             .inputUris(getInputUri(), inputUri2)
-            .outputUris(getOutputUri());
+            .outputUri(getOutputUri());
         if (isHadoopV1()) {
             treasuryJob.outputCommitter(MongoOutputCommitter.class);
         }

@@ -49,11 +49,10 @@ public class BookstoreTest extends BaseHadoopTest {
         DBCollection collection = mongoClient.getDB(uri.getDatabase())
                                              .getCollection(uri.getCollection());
 
-        final URI outputUri = new URI(uri.getURI());
         MapReduceJob job = new MapReduceJob(BookstoreConfig.class.getName())
                                .jar(JAR_PATH)
                                .inputUris(INVENTORY_BSON)
-                               .outputUris(outputUri)
+                               .outputUri(uri)
                                .param("mapred.input.dir", INVENTORY_BSON.toString());
         if (!HADOOP_VERSION.startsWith("1.")) {
             job.inputFormat(BSONFileInputFormat.class);
