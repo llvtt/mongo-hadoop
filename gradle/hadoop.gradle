@@ -85,7 +85,7 @@ def startHadoop() {
     execute("${hadoopHome}/bin/start-mapred.sh", [],
             new FileOutputStream("${rootDir}/build/logs/start-mapred.out"))
     // Wait for job tracker to start.
-    sleep(10000)
+    sleep(30000)
     createHiveWarehouse()
 }
 
