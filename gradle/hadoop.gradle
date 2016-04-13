@@ -79,13 +79,15 @@ def startYarn() {
 
 def startHadoop() {
     println "Starting HDFS"
-    execute("${hadoopHome}/bin/start-dfs.sh", [],
-            new FileOutputStream("${rootDir}/build/logs/start-dfs.out"))
+    // Use hadoop-deamon.sh directly instead of wrapper scripts to avoid
+    // needing to SSH in Jenkins.
+    execute("${hadoopHome}/bin/hadoop-daemon.sh", ["start", "namenode"],
+            new FileOutputStream("${rootDir}/build/logs/start-namenode.out"))
+    execute("${hadoopHome}/bin/hadoop-daemon.sh", ["start", "datanode"],
+            new FileOutputStream("${rootDir}/build/logs/start-datanode.out"))
     println "Starting MapReduce"
     execute("${hadoopHome}/bin/start-mapred.sh", [],
             new FileOutputStream("${rootDir}/build/logs/start-mapred.out"))
-    // Wait for job tracker to start.
-    sleep(30000)
     createHiveWarehouse()
 }
 
@@ -96,21 +98,14 @@ def stopAll(signal) {
     stopService(signal, 'DataNode', 'data node')
     stopService(signal, 'NameNode', 'name node')
     stopService(signal, 'RunJar', 'hive server')
-}
-
-def stopHadoop() {
-    execute("$hadoopHome/bin/stop-dfs.sh")
-    execute("$hadoopHome/bin/stop-mapred.sh")
+    stopService(signal, 'JobTracker', 'job tracker')
+    stopService(signal, 'TaskTracker', 'task tracker')
 }
 
 task shutdownCluster() << {
     println "shutdownCluster"
-    if (isHadoopV1) {
-        stopHadoop()
-    } else {
-        stopAll('TERM')
-        stopAll('KILL')
-    }
+    stopAll('TERM')
+    stopAll('KILL')
 }
 
 task startCluster(dependsOn: [copyFiles]) << {
