@@ -86,8 +86,10 @@ def startHadoop() {
     execute("${hadoopHome}/bin/hadoop-daemon.sh", ["start", "datanode"],
             new FileOutputStream("${rootDir}/build/logs/start-datanode.out"))
     println "Starting MapReduce"
-    execute("${hadoopHome}/bin/start-mapred.sh", [],
-            new FileOutputStream("${rootDir}/build/logs/start-mapred.out"))
+    execute("${hadoopHome}/bin/hadoop-daemon.sh", ["start", "jobtracker"],
+            new FileOutputStream("${rootDir}/build/logs/start-jobtracker.out"))
+    execute("${hadoopHome}/bin/hadoop-daemon.sh", ["start", "tasktracker"],
+            new FileOutputStream("${rootDir}/build/logs/start-tasktracker.out"))
     createHiveWarehouse()
 }
 
