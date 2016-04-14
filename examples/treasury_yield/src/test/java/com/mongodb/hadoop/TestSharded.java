@@ -80,7 +80,6 @@ public class TestSharded extends BaseShardedTest {
                     getMongos().getDB("mongo_hadoop").getCollectionNames().contains("yield_historical.out"));
     }
 
-    @Test
     public void testDirectAccess() {
         DBCollection collection = getMongos().getDB("mongo_hadoop").getCollection("yield_historical.out");
         collection.drop();
@@ -134,10 +133,10 @@ public class TestSharded extends BaseShardedTest {
         collection.drop();
 
         MapReduceJob job = new MapReduceJob(TreasuryYieldXMLConfig.class.getName())
-                               .jar(JOBJAR_PATH)
-                               .inputUris(new MongoClientURIBuilder(getInputUri()).readPreference(ReadPreference.secondary()).build())
-                               .outputUri(getOutputUri())
-                               .param(SPLITS_USE_RANGEQUERY, "true");
+          .jar(JOBJAR_PATH)
+          .inputUris(new MongoClientURIBuilder(getInputUri()).readPreference(ReadPreference.secondary()).build())
+          .outputUri(getOutputUri())
+          .param(SPLITS_USE_RANGEQUERY, "true");
         if (isHadoopV1()) {
             job.outputCommitter(MongoOutputCommitter.class);
         }
