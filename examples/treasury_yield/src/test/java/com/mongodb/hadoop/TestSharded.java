@@ -80,6 +80,7 @@ public class TestSharded extends BaseShardedTest {
                     getMongos().getDB("mongo_hadoop").getCollectionNames().contains("yield_historical.out"));
     }
 
+    @Test
     public void testDirectAccess() {
         DBCollection collection = getMongos().getDB("mongo_hadoop").getCollection("yield_historical.out");
         collection.drop();

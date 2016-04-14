@@ -12,8 +12,8 @@ public class MongoOutputCommitterTest {
     @Test
     public void testGetTaskAttemptPath() {
         // Empty configuration.
-        final JobConf conf = new JobConf();
-        final String taskName = "attempt_local138413205_0007_m_000000_0";
+        JobConf conf = new JobConf();
+        String taskName = "attempt_local138413205_0007_m_000000_0";
         String suffix = String.format(
           "/%s/%s/_out", taskName, MongoOutputCommitter.TEMP_DIR_NAME);
         CompatUtils.TaskAttemptContext context =
