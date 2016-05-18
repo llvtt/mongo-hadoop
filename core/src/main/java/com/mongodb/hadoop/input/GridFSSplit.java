@@ -45,10 +45,20 @@ public class GridFSSplit extends InputSplit {
         return _gridfs;
     }
 
+    private GridFSDBFile getFile() {
+        return getGridFS().find(fileId);
+    }
+
+    public Object get(final String key) {
+        return getFile().get(key);
+    }
+
+    public DBObject getMetadata() {
+        return getFile().getMetaData();
+    }
+
     public String getData() throws IOException {
-        GridFS gridFS = getGridFS();
-        GridFSDBFile retrieved = gridFS.find(fileId);
-        InputStream fileStream = retrieved.getInputStream();
+        InputStream fileStream = getFile().getInputStream();
 
         // Skip to chunk. GridFSInputStream will do what we want here.
         // noinspection ResultOfMethodCallIgnored

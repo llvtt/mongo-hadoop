@@ -478,6 +478,13 @@ project(":examples/sensors") {
     }
 }
 
+project(":examples/shakespeare") {
+    uploadArchives.onlyIf { false }
+    dependencies {
+        compile project(":core")
+    }
+}
+
 task cleanLogs(type: Delete) {
     delete fileTree(dir: "logs", exclude: ".keep")
 }
