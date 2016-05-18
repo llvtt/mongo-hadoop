@@ -118,6 +118,12 @@ public final class MongoConfigUtil {
     public static final String BSON_OUTPUT_BUILDSPLITS = "bson.output.build_splits";
     public static final String BSON_PATHFILTER = "bson.pathfilter.class";
 
+    // Settings specific to reading from GridFS.
+    public static final String GRIDFS_DELIMITER_PATTERN =
+      "mongo.gridfs.delimiter.pattern";
+    public static final String GRIDFS_KEEP_DELIMITER =
+      "mongo.gridfs.keep_delimiter";
+    public static final String GRIDFS_DEFAULT_DELIMITER = "(\n|\r\n)";
 
     /**
      * <p>
@@ -924,6 +930,24 @@ public final class MongoConfigUtil {
 
     public static String getInputKey(final Configuration conf) {
         return conf.get(INPUT_KEY, "_id");
+    }
+
+    public static String getGridFSDelimiterPattern(final Configuration conf) {
+        return conf.get(GRIDFS_DELIMITER_PATTERN, GRIDFS_DEFAULT_DELIMITER);
+    }
+
+    public static void setGridFSDelimiterPattern(
+      final Configuration conf, final String pattern) {
+        conf.set(GRIDFS_DELIMITER_PATTERN, pattern);
+    }
+
+    public static boolean isGridFSKeepDelimiter(final Configuration conf) {
+        return conf.getBoolean(GRIDFS_KEEP_DELIMITER, false);
+    }
+
+    public static void setGridFSKeepDelimiter(
+      final Configuration conf, final boolean keepDelimiter) {
+        conf.setBoolean(GRIDFS_KEEP_DELIMITER, keepDelimiter);
     }
 
     public static void setNoTimeout(final Configuration conf, final boolean value) {
