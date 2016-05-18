@@ -11,6 +11,7 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
+import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -21,7 +22,11 @@ import org.bson.BasicBSONObject;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * MapReduce job that counts the most common exclamations in his complete works.
@@ -31,21 +36,28 @@ public class Shakespeare extends MongoTool {
         JobConf conf = new JobConf(new Configuration());
         if (MongoTool.isMapRedV1()) {
             // TODO
+            throw new RuntimeException("shouldnt be here.");
         } else {
             MongoConfigUtil.setInputFormat(conf, GridFSInputFormat.class);
             MongoConfigUtil.setOutputFormat(conf, MongoOutputFormat.class);
         }
-        // Regex: lookahead for "end of sentence" punctuation.
-        MongoConfigUtil.setGridFSDelimiterPattern(conf, "(?<=[.?!])");
+        MongoConfigUtil.setInputURI(
+          conf,
+          "mongodb://localhost:27017/mongo_hadoop.fs");
+        // End-of-sentence punctuation.
+        MongoConfigUtil.setGridFSDelimiterPattern(conf, "[.?!]");
+        // Keep the punctuation.
+        MongoConfigUtil.setGridFSKeepDelimiter(conf, true);
         MongoConfigUtil.setMapper(conf, ShakespeareMapper.class);
-        MongoConfigUtil.setMapperOutputKey(conf, ShakespeareWritable.class);
-        MongoConfigUtil.setMapperOutputValue(conf, IntWritable.class);
+        MongoConfigUtil.setMapperOutputKey(conf, Text.class);
+        MongoConfigUtil.setMapperOutputValue(conf, Text.class);
         MongoConfigUtil.setReducer(conf, ShakespeareReducer.class);
         MongoConfigUtil.setOutputKey(conf, NullWritable.class);
         MongoConfigUtil.setOutputValue(conf, BSONWritable.class);
         MongoConfigUtil.setOutputURI(
           conf,
           "mongodb://localhost:27017/mongo_hadoop.shakespeare.out");
+
         setConf(conf);
     }
 
@@ -53,61 +65,35 @@ public class Shakespeare extends MongoTool {
         System.exit(ToolRunner.run(new Shakespeare(), args));
     }
 
-    class ShakespeareWritable implements Writable {
-        private String workTitle;
-        private String exclamation;
+    static class ShakespeareMapper
+      extends Mapper<NullWritable, Text, Text, Text> {
+        public static final int MAX_EXCLAMATION_WORDS = 3;
+        final HashSet<String> secondPersonPronouns;
+        final Text exclamation;
+        final Text foundIn;
 
-        public String getExclamation() {
-            return exclamation;
+        public ShakespeareMapper() {
+            super();
+            secondPersonPronouns = new HashSet<String>() {{
+                add("you");
+                add("your");
+                add("yours");
+                add("ye");
+                add("thou");
+                add("thy");
+                add("thine");
+                add("thee");
+            }};
+            exclamation = new Text();
+            foundIn = new Text();
         }
-
-        public void setExclamation(final String exclamation) {
-            this.exclamation = exclamation;
-        }
-
-        public String getWorkTitle() {
-            return workTitle;
-        }
-
-        public void setWorkTitle(final String workTitle) {
-            this.workTitle = workTitle;
-        }
-
-        @Override
-        public void write(final DataOutput out) throws IOException {
-            out.writeUTF(workTitle);
-            out.writeUTF(exclamation);
-        }
-
-        @Override
-        public void readFields(final DataInput in) throws IOException {
-            workTitle = in.readUTF();
-            exclamation = in.readUTF();
-        }
-    }
-
-    class ShakespeareMapper
-      extends Mapper<NullWritable, Text, ShakespeareWritable, IntWritable> {
-        final HashSet<String> secondPersonPronouns = new HashSet<String>() {{
-            add("you");
-            add("your");
-            add("yours");
-            add("ye");
-            add("thou");
-            add("thy");
-            add("thine");
-            add("thee");
-        }};
-        final int MAX_EXCLAMATION_WORDS = 3;
-        final ShakespeareWritable sw = new ShakespeareWritable();
-        final IntWritable intWritable = new IntWritable();
 
         private boolean isExclamation(final String test) {
             // Exclamations must end!
             if (!test.endsWith("!")) {
                 return false;
             }
-            String[] words = test.split(" \\+");
+            String[] words = test.split("[\r\n\t ]+");
             // We figure the most entertaining exclamations will be directed at
             // the listener.
             for (String word : words) {
@@ -128,34 +114,48 @@ public class Shakespeare extends MongoTool {
             String workTitle = (String) gridSplit.get("filename");
 
             // Extract exclamations.
-            String sentence = Text.decode(value.getBytes());
+            String sentence = Text.decode(value.getBytes()).trim().toLowerCase();
             if (isExclamation(sentence)) {
-                sw.setWorkTitle(workTitle);
-                sw.setExclamation(sentence);
-                intWritable.set(1);
-                context.write(sw, intWritable);
+                foundIn.set(workTitle);
+                exclamation.set(sentence);
+
+                context.write(exclamation, foundIn);
             }
         }
     }
 
-    class ShakespeareReducer
-      extends Reducer<ShakespeareWritable, IntWritable, NullWritable,
-      BSONWritable> {
-        final BSONWritable bsonWritable = new BSONWritable();
+    static class ShakespeareReducer
+      extends Reducer<Text, Text, NullWritable, BSONWritable> {
+        final BSONWritable bsonWritable;
+
+        public ShakespeareReducer() {
+            super();
+            bsonWritable = new BSONWritable();
+        }
 
         @Override
         protected void reduce(
-          final ShakespeareWritable key, final Iterable<IntWritable> values,
+          final Text key, final Iterable<Text> values,
           final Context context) throws IOException, InterruptedException {
-            int count = 0;
-            for (IntWritable value : values) {
-                count += value.get();
+            Map<String, Integer> foundInMap = new HashMap<String, Integer>();
+            int totalCount = 0;
+            for (Text foundIn : values) {
+                String title = foundIn.toString();
+                if (foundInMap.containsKey(title)) {
+                    foundInMap.put(title, foundInMap.get(title) + 1);
+                } else {
+                    foundInMap.put(title, 1);
+                }
+                ++totalCount;
             }
-            BSONObject result = new BasicBSONObject("finalCount", count);
-            result.put("exclamation", key.getExclamation());
-            result.put("work", key.getWorkTitle());
-            bsonWritable.setDoc(result);
-            context.write(NullWritable.get(), bsonWritable);
+            if (totalCount > 1) {
+                BSONObject result =
+                  new BasicBSONObject("totalCount", totalCount);
+                result.put("exclamation", key.toString());
+                result.put("counts", foundInMap);
+                bsonWritable.setDoc(result);
+                context.write(NullWritable.get(), bsonWritable);
+            }
         }
     }
 }

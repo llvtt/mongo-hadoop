@@ -7,6 +7,8 @@ import com.mongodb.gridfs.GridFS;
 import com.mongodb.gridfs.GridFSDBFile;
 import com.mongodb.hadoop.input.GridFSSplit;
 import com.mongodb.hadoop.util.MongoConfigUtil;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
@@ -24,6 +26,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
+
+    private static final Log LOG = LogFactory.getLog(GridFSInputFormat.class);
+
     @Override
     public List<InputSplit> getSplits(final JobContext context)
       throws IOException, InterruptedException {
@@ -52,6 +57,7 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
             }
         }
 
+        LOG.debug("Found GridFS splits: " + splits);
         return splits;
     }
 
@@ -62,7 +68,7 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
         return new GridFSRecordReader();
     }
 
-    class GridFSRecordReader extends RecordReader<NullWritable, Text> {
+    static class GridFSRecordReader extends RecordReader<NullWritable, Text> {
 
         private GridFSSplit split;
         private Pattern delimiterPattern;
@@ -71,6 +77,7 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
         private final Text text = new Text();
         private String chunkData;
         private int previousMatchIndex = 0;
+        private int totalMatches = 0;
 
         @Override
         public void initialize(final InputSplit split, final TaskAttemptContext context)
@@ -90,15 +97,29 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
 
         @Override
         public boolean nextKeyValue() throws IOException, InterruptedException {
-            // TODO: if keep delimiters, need to pass index here.
+            // No delimiter being used, and we haven't returned anything yet.
+            if (null == matcher && 0 == totalMatches) {
+                text.set(chunkData);
+                ++totalMatches;
+                return true;
+            } else if (null == matcher) {
+                return false;
+            }
+
+            // Delimiter used; do we have more matches?
             boolean hasNext = matcher.find();
             if (hasNext) {
-                int currentMatchIndex = matcher.start();
+                int currentMatchIndex =
+                  keepDelimiter ? matcher.end() : matcher.start();
                 String token = chunkData.substring(
                   previousMatchIndex, currentMatchIndex);
                 previousMatchIndex = currentMatchIndex;
                 text.set(token);
+                ++totalMatches;
+            } else if (LOG.isDebugEnabled()) {
+                LOG.debug("Read " + totalMatches + " segments.");
             }
+
             return hasNext;
         }
 

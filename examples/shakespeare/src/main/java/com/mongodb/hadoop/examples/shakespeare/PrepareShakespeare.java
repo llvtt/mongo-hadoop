@@ -76,7 +76,10 @@ public class PrepareShakespeare implements Tool {
                 if (null == workTitle) {
                     throw new IOException("Could not find a title!");
                 }
-                OutputStream os = gridFS.createFile(workTitle).getOutputStream();
+                GridFSInputFile file = gridFS.createFile(workTitle);
+                // Set chunk size low enough that we get multiple chunks.
+                file.setChunkSize(1024 * 10);
+                OutputStream os = file.getOutputStream();
                 os.write(nextWork.getBytes());
                 os.close();
             }
