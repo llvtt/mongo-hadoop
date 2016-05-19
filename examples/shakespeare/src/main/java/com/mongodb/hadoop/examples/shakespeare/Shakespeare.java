@@ -33,11 +33,6 @@ public class Shakespeare extends MongoTool {
         JobConf conf = new JobConf(new Configuration());
         if (MongoTool.isMapRedV1()) {
             // TODO
-            MapredMongoConfigUtil.setInputFormat(
-              conf, GridFSInputFormat.class);
-            MapredMongoConfigUtil.setOutputFormat(
-              conf, com.mongodb.hadoop.mapred.MongoOutputFormat.class);
-            throw new RuntimeException("shouldnt be here.");
         } else {
             MongoConfigUtil.setInputFormat(conf, GridFSInputFormat.class);
             MongoConfigUtil.setOutputFormat(conf, MongoOutputFormat.class);
