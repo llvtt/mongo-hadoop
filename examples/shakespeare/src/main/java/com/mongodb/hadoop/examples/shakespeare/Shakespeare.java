@@ -4,14 +4,12 @@ import com.mongodb.hadoop.GridFSInputFormat;
 import com.mongodb.hadoop.MongoOutputFormat;
 import com.mongodb.hadoop.input.GridFSSplit;
 import com.mongodb.hadoop.io.BSONWritable;
+import com.mongodb.hadoop.util.MapredMongoConfigUtil;
 import com.mongodb.hadoop.util.MongoConfigUtil;
 import com.mongodb.hadoop.util.MongoTool;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.Writable;
-import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -19,23 +17,26 @@ import org.apache.hadoop.util.ToolRunner;
 import org.bson.BSONObject;
 import org.bson.BasicBSONObject;
 
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 
 /**
  * MapReduce job that counts the most common exclamations in his complete works.
  */
 public class Shakespeare extends MongoTool {
+    public static final int MAX_EXCLAMATION_WORDS = 3;
+    public static final int MIN_OCCURRENCES = 5;
+
     public Shakespeare() {
         JobConf conf = new JobConf(new Configuration());
         if (MongoTool.isMapRedV1()) {
             // TODO
+            MapredMongoConfigUtil.setInputFormat(
+              conf, GridFSInputFormat.class);
+            MapredMongoConfigUtil.setOutputFormat(
+              conf, com.mongodb.hadoop.mapred.MongoOutputFormat.class);
             throw new RuntimeException("shouldnt be here.");
         } else {
             MongoConfigUtil.setInputFormat(conf, GridFSInputFormat.class);
@@ -45,9 +46,8 @@ public class Shakespeare extends MongoTool {
           conf,
           "mongodb://localhost:27017/mongo_hadoop.fs");
         // End-of-sentence punctuation.
-        MongoConfigUtil.setGridFSDelimiterPattern(conf, "[.?!]");
+        MongoConfigUtil.setGridFSDelimiterPattern(conf, "(?<=[.?!])");
         // Keep the punctuation.
-        MongoConfigUtil.setGridFSKeepDelimiter(conf, true);
         MongoConfigUtil.setMapper(conf, ShakespeareMapper.class);
         MongoConfigUtil.setMapperOutputKey(conf, Text.class);
         MongoConfigUtil.setMapperOutputValue(conf, Text.class);
@@ -67,7 +67,6 @@ public class Shakespeare extends MongoTool {
 
     static class ShakespeareMapper
       extends Mapper<NullWritable, Text, Text, Text> {
-        public static final int MAX_EXCLAMATION_WORDS = 3;
         final HashSet<String> secondPersonPronouns;
         final Text exclamation;
         final Text foundIn;
@@ -148,11 +147,13 @@ public class Shakespeare extends MongoTool {
                 }
                 ++totalCount;
             }
-            if (totalCount > 1) {
+            if (totalCount >= MIN_OCCURRENCES) {
                 BSONObject result =
                   new BasicBSONObject("totalCount", totalCount);
                 result.put("exclamation", key.toString());
                 result.put("counts", foundInMap);
+                result.put(
+                  "wordCount", key.toString().split("[\r\n\t ]+").length);
                 bsonWritable.setDoc(result);
                 context.write(NullWritable.get(), bsonWritable);
             }

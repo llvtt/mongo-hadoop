@@ -121,8 +121,6 @@ public final class MongoConfigUtil {
     // Settings specific to reading from GridFS.
     public static final String GRIDFS_DELIMITER_PATTERN =
       "mongo.gridfs.delimiter.pattern";
-    public static final String GRIDFS_KEEP_DELIMITER =
-      "mongo.gridfs.keep_delimiter";
     public static final String GRIDFS_DEFAULT_DELIMITER = "(\n|\r\n)";
 
     /**
@@ -939,15 +937,6 @@ public final class MongoConfigUtil {
     public static void setGridFSDelimiterPattern(
       final Configuration conf, final String pattern) {
         conf.set(GRIDFS_DELIMITER_PATTERN, pattern);
-    }
-
-    public static boolean isGridFSKeepDelimiter(final Configuration conf) {
-        return conf.getBoolean(GRIDFS_KEEP_DELIMITER, false);
-    }
-
-    public static void setGridFSKeepDelimiter(
-      final Configuration conf, final boolean keepDelimiter) {
-        conf.setBoolean(GRIDFS_KEEP_DELIMITER, keepDelimiter);
     }
 
     public static void setNoTimeout(final Configuration conf, final boolean value) {

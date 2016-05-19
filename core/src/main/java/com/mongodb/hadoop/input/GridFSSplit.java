@@ -25,9 +25,10 @@ public class GridFSSplit extends InputSplit
     private ObjectId fileId;
     private int chunkSize;
     private long fileLength;
-    private GridFS _gridfs;
     private int chunkId;
     private MongoClientURI inputURI;
+    private GridFS _gridfs;
+    private GridFSDBFile _file;
 
     // Zero-args constructor required for mapred.InputSplit.
     public GridFSSplit() {}
@@ -55,13 +56,14 @@ public class GridFSSplit extends InputSplit
         return _gridfs;
     }
 
-    private GridFSDBFile getFile() {
-        GridFSDBFile file = getGridFS().find(fileId);
-        if (null == file) {
-            LOG.warn("No file found for id: " + fileId + " in root "
-                + "collection: " + inputURI);
+    private GridFSDBFile getFile() throws IOException {
+        if (null == _file) {
+            _file = getGridFS().find(fileId);
+            if (null == _file) {
+                throw new IOException("No file found for id " + fileId);
+            }
         }
-        return file;
+        return _file;
     }
 
     /**
@@ -69,7 +71,7 @@ public class GridFSSplit extends InputSplit
      * @param key the key to look up
      * @return the value for the key
      */
-    public Object get(final String key) {
+    public Object get(final String key) throws IOException {
         return getFile().get(key);
     }
 
@@ -77,8 +79,24 @@ public class GridFSSplit extends InputSplit
      * Get the metadata associated with this file.
      * @return the metadata as a {@code DBObject}.
      */
-    public DBObject getMetadata() {
+    public DBObject getMetadata() throws IOException {
         return getFile().getMetaData();
+    }
+
+    /**
+     * Get the id of the chunk this split represents.
+     * @return the chunk id
+     */
+    public int getChunkId() {
+        return chunkId;
+    }
+
+    /**
+     * Get the size of the chunk this split represents, in bytes.
+     * @return the size in bytes of the chunk
+     */
+    public int getChunkSize() {
+        return chunkSize;
     }
 
     /**
@@ -86,15 +104,13 @@ public class GridFSSplit extends InputSplit
      * @return The decoded data from the chunk
      * @throws IOException if there is an exception reading the data.
      */
-    public String getData() throws IOException {
+    public InputStream getData() throws IOException {
         InputStream fileStream = getFile().getInputStream();
 
         // Skip to chunk. GridFSInputStream will do what we want here.
         // noinspection ResultOfMethodCallIgnored
         fileStream.skip(chunkSize * chunkId);
-        byte[] buff = new byte[chunkSize];
-        int bytesRead = fileStream.read(buff, 0, chunkSize);
-        return new String(buff, 0, bytesRead);
+        return fileStream;
     }
 
     @Override
