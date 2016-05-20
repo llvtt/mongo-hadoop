@@ -101,7 +101,14 @@ public class MongoOutputCommitter extends OutputCommitter {
         try {
             FileSystem fs = FileSystem.get(taskContext.getConfiguration());
             // Commit is only necessary if there was any output.
-            return fs.exists(getTaskAttemptPath(taskContext));
+            Path taskAttemptPath = getTaskAttemptPath(taskContext);
+            if (fs.exists(taskAttemptPath)) {
+                LOG.info("Task will commit from " + taskAttemptPath);
+                return true;
+            }
+            LOG.info("No commit necessary as there was no output in "
+                + taskAttemptPath);
+            return false;
         } catch (IOException e) {
             LOG.error("Could not open filesystem", e);
             throw e;
