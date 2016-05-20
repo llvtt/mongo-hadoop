@@ -78,7 +78,7 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
         private CountingInputStream chunkStream;
         private int totalMatches = 0;
         private long chunkSize;
-        private boolean readLast;
+        private boolean readLast = false;
 
         @Override
         public void initialize(final InputSplit split, final TaskAttemptContext context)
@@ -95,7 +95,8 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
                 scanner.useDelimiter(patternString);
                 // Skip past the first delimiter if this is not the first chunk.
                 if (this.split.getChunkId() > 0 && scanner.hasNext()) {
-                    scanner.next();
+                    LOG.info("skipping past already-read token: " + scanner
+                        .next());
                 }
             }
         }
@@ -125,16 +126,29 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
             }
 
             // Delimiter used; do we have more matches?
-            long currentPosition = chunkStream.getByteCount();
+            long currentPositionInChunk =
+              chunkStream.getByteCount() - (chunkSize * split.getChunkId());
             boolean hasNext = scanner.hasNext();
             if (hasNext) {
                 // Read one more token past the end of the split.
-                if (currentPosition >= chunkSize && readLast) {
-                    return false;
-                } else {
+                if (currentPositionInChunk > chunkSize) {
+                    if (readLast) {
+                        LOG.info("skipping the rest of this chunk because we've "
+                            + "read beyond the end: " + currentPositionInChunk +
+                            "; read " + totalMatches + " matches here.");
+                        return false;
+                    }
                     readLast = true;
                 }
-                text.set(scanner.next());
+                ////////////////////////////////
+                // TODO: debug only!
+                String token = scanner.next();
+                LOG.info("got token: " + token + "; position=" +
+                    currentPositionInChunk + "; total overall=" + chunkStream
+                    .getByteCount());
+                ////////////////////////////////
+
+                text.set(token);
                 ++totalMatches;
             } else if (LOG.isDebugEnabled()) {
                 LOG.info("Read " + totalMatches + " segments.");
