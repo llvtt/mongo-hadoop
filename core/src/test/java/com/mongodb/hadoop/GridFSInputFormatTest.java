@@ -1,7 +1,6 @@
 package com.mongodb.hadoop;
 
 import com.mongodb.BasicDBObject;
-import com.mongodb.Block;
 import com.mongodb.MongoClient;
 import com.mongodb.client.gridfs.GridFSBucket;
 import com.mongodb.client.gridfs.GridFSBuckets;
@@ -30,7 +29,6 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -43,26 +41,22 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
     private static final GridFSBucket bucket = GridFSBuckets.create(
       client.getDatabase("mongo_hadoop"));
     private static StringBuilder fileContents;
+    private static GridFSFile file;
 
-    private static void deleteReadmeFiles() {
-        bucket.find(new Document("filename", "README.md")).forEach(
-          new Block<GridFSFile>() {
-              @Override
-              public void apply(final GridFSFile gridFSFile) {
-                  bucket.delete(gridFSFile.getObjectId());
-              }
-          }
-        );
+    private static void cleanReadmeFiles() {
+        if (file != null) {
+            bucket.delete(file.getObjectId());
+        }
     }
 
     @BeforeClass
     public static void setUpClass() throws IOException {
-        deleteReadmeFiles();
+        cleanReadmeFiles();
         // Load text files into GridFS.
         GridFSUploadStream stream = bucket.openUploadStream(
           "README.md",
           // Set small chunk size so we get multiple chunks.
-          new GridFSUploadOptions().chunkSizeBytes(2048));
+          new GridFSUploadOptions().chunkSizeBytes(1024));
         File readmeFile = new File(PROJECT_HOME, "README.md");
 
         // Count number of bytes in the README.
@@ -85,11 +79,13 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         readmeSections = Pattern.compile("#+").split(fileContents).length;
         IOUtils.copy(reader, stream);
         stream.close();
+
+        file = bucket.find(new Document("filename", "README.md")).first();
     }
 
     @AfterClass
     public static void tearDownClass() {
-        deleteReadmeFiles();
+        cleanReadmeFiles();
     }
 
     private Configuration getConfiguration() {
@@ -110,13 +106,16 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
 
     @Test
     public void testGetSplits() throws IOException, InterruptedException {
-        assertEquals(3, getSplits().size());
+        assertEquals(
+          (int) Math.ceil(file.getLength() / (float) file.getChunkSize()),
+          getSplits().size());
     }
 
     @Test
     public void testRecordReader() throws IOException, InterruptedException {
         List<InputSplit> splits = getSplits();
         Configuration conf = getConfiguration();
+        // Split README by sections in Markdown.
         MongoConfigUtil.setGridFSDelimiterPattern(conf, "#+");
         TaskAttemptContext context = mock(TaskAttemptContext.class);
         when(context.getConfiguration()).thenReturn(conf);
@@ -124,12 +123,8 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         for (InputSplit split : splits) {
             RecordReader reader = new GridFSInputFormat.GridFSRecordReader();
             reader.initialize(split, context);
-            int oldSections = totalSections;
             while (reader.nextKeyValue()) {
                 ++totalSections;
-            }
-            if (totalSections == oldSections) {
-                fail("no sections found in this split???? " + split);
             }
         }
         assertEquals(readmeSections, totalSections);
