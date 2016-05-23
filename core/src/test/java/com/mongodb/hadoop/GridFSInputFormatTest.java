@@ -42,6 +42,7 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
     private static int readmeBytes, readmeSections;
     private static final GridFSBucket bucket = GridFSBuckets.create(
       client.getDatabase("mongo_hadoop"));
+    private static StringBuilder fileContents;
 
     private static void deleteReadmeFiles() {
         bucket.find(new Document("filename", "README.md")).forEach(
@@ -68,7 +69,7 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         readmeBytes = (int) readmeFile.length();
 
         // Read the README, preparing to count sections and upload to GridFS.
-        StringBuilder fileContents = new StringBuilder();
+        fileContents = new StringBuilder();
         BufferedReader reader = new BufferedReader(new FileReader(readmeFile));
         reader.mark(readmeBytes + 1);
         int charsRead;
@@ -123,11 +124,11 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         for (InputSplit split : splits) {
             RecordReader reader = new GridFSInputFormat.GridFSRecordReader();
             reader.initialize(split, context);
-            int oldsections = totalSections;
+            int oldSections = totalSections;
             while (reader.nextKeyValue()) {
                 ++totalSections;
             }
-            if (totalSections == oldsections) {
+            if (totalSections == oldSections) {
                 fail("no sections found in this split???? " + split);
             }
         }
@@ -137,13 +138,14 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
     @Test
     public void testRecordReaderNoDelimiter()
       throws IOException, InterruptedException {
+        int bufferPosition = 0;
+        byte[] buff = new byte[readmeBytes * 2];
         List<InputSplit> splits = getSplits();
         Configuration conf = getConfiguration();
         // Empty delimiter == no delimiter.
         MongoConfigUtil.setGridFSDelimiterPattern(conf, "");
         TaskAttemptContext context = mock(TaskAttemptContext.class);
         when(context.getConfiguration()).thenReturn(conf);
-        int totalBytes = 0;
         Text text;
         for (InputSplit split : splits) {
             GridFSInputFormat.GridFSRecordReader reader =
@@ -151,10 +153,14 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
             reader.initialize(split, context);
             while (reader.nextKeyValue()) {
                 text = reader.getCurrentValue();
-                totalBytes += text.getBytes().length;
+                System.arraycopy(
+                  text.getBytes(), 0,
+                  buff, bufferPosition, text.getLength());
+                bufferPosition += text.getLength();
             }
         }
-        assertEquals(readmeBytes, totalBytes);
+        assertEquals(
+          fileContents.toString(), Text.decode(buff, 0, bufferPosition));
     }
 
 }

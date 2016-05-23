@@ -7,7 +7,6 @@ import com.mongodb.gridfs.GridFS;
 import com.mongodb.gridfs.GridFSDBFile;
 import com.mongodb.hadoop.input.GridFSSplit;
 import com.mongodb.hadoop.util.MongoConfigUtil;
-import org.apache.commons.io.input.CountingInputStream;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -21,11 +20,14 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.bson.types.ObjectId;
 
 import java.io.BufferedReader;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Scanner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
 
@@ -70,15 +72,87 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
         return new GridFSRecordReader();
     }
 
+    static class ChunkReadingCharSequence implements CharSequence, Closeable {
+        private Reader reader;
+        private int chunkSize;
+        private int length;
+        private StringBuilder builder;
+        private char[] buff;
+
+        public ChunkReadingCharSequence(final GridFSSplit split)
+          throws IOException {
+            this.reader = new BufferedReader(
+              new InputStreamReader(split.getData()));
+            this.chunkSize = split.getChunkSize();
+            builder = new StringBuilder();
+            buff = new char[1024 * 1024 * 16];
+            // How many more bytes can be read starting from this chunk?
+            length = (int) split.getLength() - split.getChunkId() * chunkSize;
+        }
+
+        @Override
+        public int length() {
+            return length;
+        }
+
+        private void advanceToIndex(final int index) throws IOException {
+            if (index >= builder.length()) {
+                while (index >= builder.length()) {
+                    int bytesRead = reader.read(buff);
+                    if (bytesRead > 0) {
+                        builder.append(buff, 0, bytesRead);
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public char charAt(final int index) {
+            try {
+                advanceToIndex(index);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return builder.charAt(index);
+        }
+
+        @Override
+        public CharSequence subSequence(final int start, final int end) {
+            try {
+                advanceToIndex(end);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return builder.subSequence(start, end);
+        }
+
+        /**
+         * Get the entire contents of this GridFS chunk.
+         * @return the contents of the chunk as a CharSequence (a String).
+         */
+        public CharSequence chunkContents() {
+            return subSequence(0, Math.min(chunkSize, length()));
+        }
+
+        @Override
+        public void close() throws IOException {
+            reader.close();
+        }
+    }
+
     static class GridFSRecordReader extends RecordReader<NullWritable, Text> {
 
         private GridFSSplit split;
-        private Scanner scanner;
         private final Text text = new Text();
-        private CountingInputStream chunkStream;
         private int totalMatches = 0;
         private long chunkSize;
         private boolean readLast = false;
+        private Pattern delimiterPattern;
+        private Matcher matcher;
+        private int previousMatchIndex = 0;
+        private ChunkReadingCharSequence chunkData;
 
         @Override
         public void initialize(final InputSplit split, final TaskAttemptContext context)
@@ -88,73 +162,66 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
 
             String patternString =
               MongoConfigUtil.getGridFSDelimiterPattern(conf);
-            chunkStream = new CountingInputStream(this.split.getData());
             chunkSize = this.split.getChunkSize();
-            if (!patternString.isEmpty()) {
-                scanner = new Scanner(chunkStream);
-                scanner.useDelimiter(patternString);
+            chunkData = new ChunkReadingCharSequence(this.split);
+            if (!(null == patternString || patternString.isEmpty())) {
+                delimiterPattern = Pattern.compile(patternString);
+                matcher = delimiterPattern.matcher(chunkData);
+
                 // Skip past the first delimiter if this is not the first chunk.
-                if (this.split.getChunkId() > 0 && scanner.hasNext()) {
-                    LOG.info("skipping past already-read token: " + scanner
-                        .next());
+                if (this.split.getChunkId() > 0) {
+                    CharSequence skipped = nextToken();
+                    LOG.info("skipping past already-read token: " + skipped);
                 }
             }
         }
 
-        private String getChunkContents() throws IOException {
-            StringBuilder builder = new StringBuilder();
-            char[] buff = new char[this.split.getChunkSize()];
-            BufferedReader reader =
-              new BufferedReader(new InputStreamReader(chunkStream));
-            int bytesRead;
-            do {
-                bytesRead = reader.read(buff);
-                builder.append(buff, 0, bytesRead);
-            } while (bytesRead > 0);
-            return builder.toString();
+        private CharSequence nextToken() {
+            if (matcher.find()) {
+                int currentMatchIndex = matcher.start();
+                CharSequence slice = chunkData.subSequence(
+                  previousMatchIndex, currentMatchIndex);
+                previousMatchIndex = currentMatchIndex;
+                return slice;
+            }
+            // Last token after the final delimiter.
+            readLast = true;
+            return chunkData.subSequence(
+              previousMatchIndex, chunkData.length());
         }
 
         @Override
         public boolean nextKeyValue() throws IOException, InterruptedException {
-            // No delimiter being used, and we haven't returned anything yet.
-            if (null == scanner && 0 == totalMatches) {
-                text.set(getChunkContents());
-                ++totalMatches;
-                return true;
-            } else if (null == scanner) {
+            if (readLast) {
+                LOG.debug("skipping the rest of this chunk because we've "
+                    + "read beyond the end: " + previousMatchIndex +
+                    "; read " + totalMatches + " matches here.");
                 return false;
             }
 
-            // Delimiter used; do we have more matches?
-            long currentPositionInChunk =
-              chunkStream.getByteCount() - (chunkSize * split.getChunkId());
-            boolean hasNext = scanner.hasNext();
-            if (hasNext) {
-                // Read one more token past the end of the split.
-                if (currentPositionInChunk > chunkSize) {
-                    if (readLast) {
-                        LOG.info("skipping the rest of this chunk because we've "
-                            + "read beyond the end: " + currentPositionInChunk +
-                            "; read " + totalMatches + " matches here.");
-                        return false;
-                    }
-                    readLast = true;
-                }
-                ////////////////////////////////
-                // TODO: debug only!
-                String token = scanner.next();
-                LOG.info("got token: " + token + "; position=" +
-                    currentPositionInChunk + "; total overall=" + chunkStream
-                    .getByteCount());
-                ////////////////////////////////
-
-                text.set(token);
+            // No delimiter being used, and we haven't returned anything yet.
+            if (null == matcher) {
+                text.set(chunkData.chunkContents().toString());
                 ++totalMatches;
-            } else if (LOG.isDebugEnabled()) {
-                LOG.info("Read " + totalMatches + " segments.");
+                return (readLast = true);
             }
 
-            return hasNext;
+            // Delimiter used; do we have more matches?
+            CharSequence nextToken = nextToken();
+            if (nextToken != null) {
+                // Read one more token past the end of the split.
+                if (previousMatchIndex >= chunkSize) {
+                    readLast = true;
+                }
+                text.set(nextToken.toString());
+                ++totalMatches;
+                return true;
+            } else if (LOG.isDebugEnabled()) {
+                LOG.debug("Read " + totalMatches + " segments.");
+            }
+
+            // No match.
+            return false;
         }
 
         @Override
@@ -171,14 +238,12 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
         @Override
         public float getProgress() throws IOException, InterruptedException {
             return (float) Math.min(
-              chunkStream.getByteCount() / (float) split.getChunkSize(), 1.0);
+              previousMatchIndex / (float) chunkSize, 1.0);
         }
 
         @Override
         public void close() throws IOException {
-            if (scanner != null) {
-                scanner.close();
-            }
+            chunkData.close();
         }
     }
 }
