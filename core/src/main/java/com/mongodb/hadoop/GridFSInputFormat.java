@@ -194,8 +194,8 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
         public boolean nextKeyValue() throws IOException, InterruptedException {
             if (readLast) {
                 LOG.debug("skipping the rest of this chunk because we've "
-                    + "read beyond the end: " + previousMatchIndex +
-                    "; read " + totalMatches + " matches here.");
+                    + "read beyond the end: " + previousMatchIndex
+                    + "; read " + totalMatches + " matches here.");
                 return false;
             }
 
@@ -203,7 +203,8 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
             if (null == matcher) {
                 text.set(chunkData.chunkContents().toString());
                 ++totalMatches;
-                return (readLast = true);
+                readLast = true;
+                return true;
             }
 
             // Delimiter used; do we have more matches?

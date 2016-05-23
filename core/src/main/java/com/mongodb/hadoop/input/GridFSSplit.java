@@ -6,8 +6,6 @@ import com.mongodb.MongoClientURI;
 import com.mongodb.gridfs.GridFS;
 import com.mongodb.gridfs.GridFSDBFile;
 import com.mongodb.hadoop.util.MongoConfigUtil;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.bson.types.ObjectId;
 
@@ -20,15 +18,13 @@ import java.util.List;
 public class GridFSSplit extends InputSplit
   implements org.apache.hadoop.mapred.InputSplit {
 
-    private static final Log LOG = LogFactory.getLog(GridFSSplit.class);
-
     private ObjectId fileId;
     private int chunkSize;
     private long fileLength;
     private int chunkId;
     private MongoClientURI inputURI;
-    private GridFS _gridfs;
-    private GridFSDBFile _file;
+    private GridFS gridFS;
+    private GridFSDBFile file;
 
     // Zero-args constructor required for mapred.InputSplit.
     public GridFSSplit() {}
@@ -47,23 +43,23 @@ public class GridFSSplit extends InputSplit
     }
 
     private GridFS getGridFS() {
-        if (null == _gridfs) {
+        if (null == gridFS) {
             DBCollection rootCollection =
               MongoConfigUtil.getCollection(inputURI);
-            _gridfs = new GridFS(
+            gridFS = new GridFS(
               rootCollection.getDB(), rootCollection.getName());
         }
-        return _gridfs;
+        return gridFS;
     }
 
     private GridFSDBFile getFile() throws IOException {
-        if (null == _file) {
-            _file = getGridFS().find(fileId);
-            if (null == _file) {
+        if (null == file) {
+            file = getGridFS().find(fileId);
+            if (null == file) {
                 throw new IOException("No file found for id " + fileId);
             }
         }
-        return _file;
+        return file;
     }
 
     /**
@@ -174,9 +170,9 @@ public class GridFSSplit extends InputSplit
         if (obj instanceof GridFSSplit) {
             GridFSSplit other = (GridFSSplit) obj;
             return (null == inputURI
-              ? null == other.inputURI : inputURI .equals(other.inputURI)) &&
-              fileId.equals(other.fileId) &&
-              chunkId == other.chunkId;
+              ? null == other.inputURI : inputURI .equals(other.inputURI))
+              && fileId.equals(other.fileId)
+              && chunkId == other.chunkId;
         }
         return false;
     }
