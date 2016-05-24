@@ -12,8 +12,6 @@ import com.mongodb.hadoop.testutils.BaseHadoopTest;
 import com.mongodb.hadoop.util.MongoConfigUtil;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.io.BytesWritable;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.hadoop.mapreduce.RecordReader;
@@ -29,6 +27,8 @@ import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -39,11 +39,11 @@ import static org.mockito.Mockito.when;
 
 public class GridFSInputFormatTest extends BaseHadoopTest {
 
-    private static final MongoClient client = new MongoClient();
-    private static final GridFSInputFormat inputFormat =
+    private static MongoClient client = new MongoClient();
+    private static GridFSInputFormat inputFormat =
       new GridFSInputFormat();
-    private static int readmeBytes, readmeSections;
-    private static final GridFSBucket bucket = GridFSBuckets.create(
+    private static String[] readmeSections;
+    private static GridFSBucket bucket = GridFSBuckets.create(
       client.getDatabase("mongo_hadoop"));
     private static StringBuilder fileContents;
     private static GridFSFile readme;
@@ -80,13 +80,9 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         File readmeFile = new File(PROJECT_HOME, "README.md");
         uploadFile(readmeFile);
 
-        // Count number of bytes in the README.
-        readmeBytes = (int) readmeFile.length();
-
         // Read the README, preparing to count sections and upload to GridFS.
         fileContents = new StringBuilder();
         BufferedReader reader = new BufferedReader(new FileReader(readmeFile));
-        reader.mark(readmeBytes + 1);
         int charsRead;
         do {
             char[] buff = new char[1024];
@@ -95,9 +91,8 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
                 fileContents.append(buff, 0, charsRead);
             }
         } while (charsRead > 0);
-        reader.reset();
         // Count number of sections in the README ("## ...").
-        readmeSections = Pattern.compile("#+").split(fileContents).length;
+        readmeSections = Pattern.compile("#+").split(fileContents);
 
         readme = bucket.find(new Document("filename", "README.md")).first();
         bson = bucket.find(new Document("filename", "orders.bson")).first();
@@ -109,13 +104,26 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         cleanFile("orders.bson");
     }
 
-    private Configuration getConfiguration() {
+    private static Configuration getConfiguration() {
         Configuration conf = new Configuration();
         MongoConfigUtil.setInputURI(
           conf, "mongodb://localhost:27017/mongo_hadoop.fs");
         MongoConfigUtil.setQuery(
           conf, new BasicDBObject("filename", "README.md"));
         return conf;
+    }
+
+    private static JobContext mockJobContext(final Configuration conf) {
+        JobContext context = mock(JobContext.class);
+        when(context.getConfiguration()).thenReturn(conf);
+        return context;
+    }
+
+    private static TaskAttemptContext mockTaskAttemptContext(
+      final Configuration conf) {
+        TaskAttemptContext context = mock(TaskAttemptContext.class);
+        when(context.getConfiguration()).thenReturn(conf);
+        return context;
     }
 
     private List<InputSplit> getSplits()
@@ -139,17 +147,16 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         Configuration conf = getConfiguration();
         // Split README by sections in Markdown.
         MongoConfigUtil.setGridFSDelimiterPattern(conf, "#+");
-        TaskAttemptContext context = mock(TaskAttemptContext.class);
-        when(context.getConfiguration()).thenReturn(conf);
-        int totalSections = 0;
+        TaskAttemptContext context = mockTaskAttemptContext(conf);
+        List<String> sections = new ArrayList<String>();
         for (InputSplit split : splits) {
             RecordReader reader = new GridFSInputFormat.GridFSTextRecordReader();
             reader.initialize(split, context);
             while (reader.nextKeyValue()) {
-                ++totalSections;
+                sections.add(reader.getCurrentValue().toString());
             }
         }
-        assertEquals(readmeSections, totalSections);
+        assertEquals(Arrays.asList(readmeSections), sections);
     }
 
     @Test
@@ -159,16 +166,14 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         Configuration conf = getConfiguration();
         // Empty delimiter == no delimiter.
         MongoConfigUtil.setGridFSDelimiterPattern(conf, "");
-        TaskAttemptContext context = mock(TaskAttemptContext.class);
-        when(context.getConfiguration()).thenReturn(conf);
+        TaskAttemptContext context = mockTaskAttemptContext(conf);
         StringBuilder fileText = new StringBuilder();
         for (InputSplit split : splits) {
             GridFSInputFormat.GridFSTextRecordReader reader =
               new GridFSInputFormat.GridFSTextRecordReader();
             reader.initialize(split, context);
             while (reader.nextKeyValue()) {
-                Text text = reader.getCurrentValue();
-                fileText.append(text.toString());
+                fileText.append(reader.getCurrentValue().toString());
             }
         }
         assertEquals(fileContents.toString(), fileText.toString());
@@ -179,29 +184,23 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         Configuration conf = getConfiguration();
         MongoConfigUtil.setGridFSWholeFileSplit(conf, true);
 
-        JobContext jobContext = mock(JobContext.class);
-        when(jobContext.getConfiguration()).thenReturn(conf);
-
+        JobContext jobContext = mockJobContext(conf);
         List<InputSplit> splits = inputFormat.getSplits(jobContext);
         // Empty delimiter == no delimiter.
         MongoConfigUtil.setGridFSDelimiterPattern(conf, "#+");
-        TaskAttemptContext context = mock(TaskAttemptContext.class);
-        when(context.getConfiguration()).thenReturn(conf);
-        Text text;
+        TaskAttemptContext context = mockTaskAttemptContext(conf);
         assertEquals(1, splits.size());
-        StringBuilder fileText = new StringBuilder();
+        List<String> sections = new ArrayList<String>();
         for (InputSplit split : splits) {
             GridFSInputFormat.GridFSTextRecordReader reader =
               new GridFSInputFormat.GridFSTextRecordReader();
             reader.initialize(split, context);
             int i;
             for (i = 0; reader.nextKeyValue(); ++i) {
-                text = reader.getCurrentValue();
-                fileText.append(text.toString());
+                sections.add(reader.getCurrentValue().toString());
             }
-            assertEquals(readmeSections, i);
         }
-        assertEquals(fileContents.toString(), fileText.toString());
+        assertEquals(Arrays.asList(readmeSections), sections);
     }
 
     @Test
@@ -210,15 +209,12 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         Configuration conf = getConfiguration();
         MongoConfigUtil.setGridFSWholeFileSplit(conf, true);
 
-        JobContext jobContext = mock(JobContext.class);
-        when(jobContext.getConfiguration()).thenReturn(conf);
+        JobContext jobContext = mockJobContext(conf);
 
         List<InputSplit> splits = inputFormat.getSplits(jobContext);
         // Empty delimiter == no delimiter.
         MongoConfigUtil.setGridFSDelimiterPattern(conf, "");
-        TaskAttemptContext context = mock(TaskAttemptContext.class);
-        when(context.getConfiguration()).thenReturn(conf);
-        Text text;
+        TaskAttemptContext context = mockTaskAttemptContext(conf);
         assertEquals(1, splits.size());
         String fileText = null;
         for (InputSplit split : splits) {
@@ -227,8 +223,7 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
             reader.initialize(split, context);
             int i;
             for (i = 0; reader.nextKeyValue(); ++i) {
-                text = reader.getCurrentValue();
-                fileText = text.toString();
+                fileText = reader.getCurrentValue().toString();
             }
             assertEquals(1, i);
         }
@@ -244,28 +239,25 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         MongoConfigUtil.setGridFSWholeFileSplit(conf, true);
         MongoConfigUtil.setGridFSReadBinary(conf, true);
 
-        JobContext context = mock(JobContext.class);
-        when(context.getConfiguration()).thenReturn(conf);
-        TaskAttemptContext taskContext = mock(TaskAttemptContext.class);
-        when(taskContext.getConfiguration()).thenReturn(conf);
+        JobContext context = mockJobContext(conf);
+        TaskAttemptContext taskContext = mockTaskAttemptContext(conf);
 
         List<InputSplit> splits = inputFormat.getSplits(context);
         assertEquals(1, splits.size());
+        int i = 0;
+        byte[] buff = null;
         for (InputSplit split : splits) {
             GridFSInputFormat.GridFSBinaryRecordReader reader =
               new GridFSInputFormat.GridFSBinaryRecordReader();
             reader.initialize(split, taskContext);
-            byte[] buff = null;
-            int i;
-            for (i = 0; reader.nextKeyValue(); ++i) {
-                BytesWritable writable = reader.getCurrentValue();
-                buff = writable.copyBytes();
+            for (; reader.nextKeyValue(); ++i) {
+                buff = reader.getCurrentValue().copyBytes();
             }
-            // Only one record to read on the split.
-            assertEquals(1, i);
-            assertNotNull(buff);
-            assertEquals(bson.getLength(), buff.length);
         }
+        // Only one record to read on the split.
+        assertEquals(1, i);
+        assertNotNull(buff);
+        assertEquals(bson.getLength(), buff.length);
     }
 
 }

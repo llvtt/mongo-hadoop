@@ -102,7 +102,7 @@ public class PrepareShakespeare implements Tool {
         return conf;
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(final String[] args) throws Exception {
         System.exit(ToolRunner.run(new PrepareShakespeare(), args));
     }
 }

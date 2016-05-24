@@ -4,7 +4,6 @@ import com.mongodb.hadoop.GridFSInputFormat;
 import com.mongodb.hadoop.MongoOutputFormat;
 import com.mongodb.hadoop.input.GridFSSplit;
 import com.mongodb.hadoop.io.BSONWritable;
-import com.mongodb.hadoop.util.MapredMongoConfigUtil;
 import com.mongodb.hadoop.util.MongoConfigUtil;
 import com.mongodb.hadoop.util.MongoTool;
 import org.apache.hadoop.conf.Configuration;
@@ -40,9 +39,8 @@ public class Shakespeare extends MongoTool {
         MongoConfigUtil.setInputURI(
           conf,
           "mongodb://localhost:27017/mongo_hadoop.fs");
-        // End-of-sentence punctuation.
+        // End-of-sentence punctuation with lookbehind, to keep delimiter.
         MongoConfigUtil.setGridFSDelimiterPattern(conf, "(?<=[.?!])");
-        // Keep the punctuation.
         MongoConfigUtil.setMapper(conf, ShakespeareMapper.class);
         MongoConfigUtil.setMapperOutputKey(conf, Text.class);
         MongoConfigUtil.setMapperOutputValue(conf, Text.class);
@@ -56,15 +54,15 @@ public class Shakespeare extends MongoTool {
         setConf(conf);
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(final String[] args) throws Exception {
         System.exit(ToolRunner.run(new Shakespeare(), args));
     }
 
     static class ShakespeareMapper
       extends Mapper<NullWritable, Text, Text, Text> {
-        final HashSet<String> secondPersonPronouns;
-        final Text exclamation;
-        final Text foundIn;
+        private HashSet<String> secondPersonPronouns;
+        private Text exclamation;
+        private Text foundIn;
 
         public ShakespeareMapper() {
             super();
@@ -120,7 +118,7 @@ public class Shakespeare extends MongoTool {
 
     static class ShakespeareReducer
       extends Reducer<Text, Text, NullWritable, BSONWritable> {
-        final BSONWritable bsonWritable;
+        private final BSONWritable bsonWritable;
 
         public ShakespeareReducer() {
             super();

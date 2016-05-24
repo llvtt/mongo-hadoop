@@ -84,7 +84,7 @@ public class GridFSInputFormat
     createRecordReader(final InputSplit split, final TaskAttemptContext context)
       throws IOException, InterruptedException {
         if (MongoConfigUtil.isGridFSReadBinary(context.getConfiguration())) {
-            // TODO: Read GridFS files as binary files.
+            // Read GridFS files as binary files.
             return new GridFSBinaryRecordReader();
         } else {
             // Read GridFS files as text.
@@ -113,8 +113,9 @@ public class GridFSInputFormat
         @Override
         public boolean nextKeyValue() throws IOException, InterruptedException {
             // Read the whole split once.
-            if (readLast)
+            if (readLast) {
                 return false;
+            }
 
             int totalBytes = 0, bytesRead;
             do {
@@ -245,7 +246,6 @@ public class GridFSInputFormat
         public void initialize(final InputSplit split, final TaskAttemptContext context)
           throws IOException, InterruptedException {
             this.split = (GridFSSplit) split;
-            LOG.info("reading split: " + split);
             Configuration conf = context.getConfiguration();
 
             String patternString =
@@ -267,10 +267,10 @@ public class GridFSInputFormat
 
         private CharSequence nextToken() {
             if (matcher.find()) {
-                int currentMatchIndex = matcher.start();
                 CharSequence slice = chunkData.subSequence(
-                  previousMatchIndex, currentMatchIndex);
-                previousMatchIndex = currentMatchIndex;
+                  previousMatchIndex, matcher.start());
+                // Skip the delimiter.
+                previousMatchIndex = matcher.end();
                 return slice;
             }
             // Last token after the final delimiter.
@@ -288,7 +288,6 @@ public class GridFSInputFormat
                 return false;
             }
 
-            // TODO: what if we want to read whole file?
             // No delimiter being used, and we haven't returned anything yet.
             if (null == matcher) {
                 if (readWholeFile) {
@@ -309,7 +308,6 @@ public class GridFSInputFormat
                     readLast = true;
                 }
                 text.set(nextToken.toString());
-                LOG.info("read token: " + nextToken.toString());
                 ++totalMatches;
                 return true;
             } else if (LOG.isDebugEnabled()) {
