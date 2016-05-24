@@ -125,7 +125,6 @@ public class GridFSInputFormat
                     totalBytes += bytesRead;
                 }
             } while (bytesRead > 0);
-            LOG.info("binary reader: read " + totalBytes + " total bytes");
             bw.set(buff, 0, totalBytes);
             readLast = true;
             return true;
