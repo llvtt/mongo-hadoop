@@ -1,6 +1,7 @@
 package com.mongodb.hadoop;
 
 import com.mongodb.BasicDBObject;
+import com.mongodb.Block;
 import com.mongodb.MongoClient;
 import com.mongodb.client.gridfs.GridFSBucket;
 import com.mongodb.client.gridfs.GridFSBuckets;
@@ -11,6 +12,7 @@ import com.mongodb.hadoop.testutils.BaseHadoopTest;
 import com.mongodb.hadoop.util.MongoConfigUtil;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.JobContext;
@@ -23,12 +25,15 @@ import org.junit.Test;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.util.List;
 import java.util.regex.Pattern;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -41,23 +46,39 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
     private static final GridFSBucket bucket = GridFSBuckets.create(
       client.getDatabase("mongo_hadoop"));
     private static StringBuilder fileContents;
-    private static GridFSFile file;
+    private static GridFSFile readme;
+    private static GridFSFile bson;
 
-    private static void cleanReadmeFiles() {
-        if (file != null) {
-            bucket.delete(file.getObjectId());
-        }
+    private static void uploadFile(final File file)
+      throws IOException {
+        // Set a small chunks size so we get multiple chunks per readme.
+        GridFSUploadStream gridfsStream = bucket.openUploadStream(
+          file.getName(), new GridFSUploadOptions().chunkSizeBytes(1024));
+        IOUtils.copy(new FileInputStream(file), gridfsStream);
+        gridfsStream.close();
+    }
+
+    private static void cleanFile(final String filename) {
+        bucket.find(new Document("filename", filename)).forEach(
+          new Block<GridFSFile>() {
+              @Override
+              public void apply(final GridFSFile gridFSFile) {
+                  bucket.delete(gridFSFile.getObjectId());
+              }
+          }
+        );
     }
 
     @BeforeClass
-    public static void setUpClass() throws IOException {
-        cleanReadmeFiles();
-        // Load text files into GridFS.
-        GridFSUploadStream stream = bucket.openUploadStream(
-          "README.md",
-          // Set small chunk size so we get multiple chunks.
-          new GridFSUploadOptions().chunkSizeBytes(1024));
+    public static void setUpClass() throws IOException, URISyntaxException {
+        // Clean up files and re-upload them.
+        cleanFile("README.md");
+        cleanFile("orders.bson");
+        File bsonFile = new File(GridFSInputFormatTest.class.getResource(
+          "/bookstore-dump/orders.bson").toURI().getPath());
+        uploadFile(bsonFile);
         File readmeFile = new File(PROJECT_HOME, "README.md");
+        uploadFile(readmeFile);
 
         // Count number of bytes in the README.
         readmeBytes = (int) readmeFile.length();
@@ -77,15 +98,15 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         reader.reset();
         // Count number of sections in the README ("## ...").
         readmeSections = Pattern.compile("#+").split(fileContents).length;
-        IOUtils.copy(reader, stream);
-        stream.close();
 
-        file = bucket.find(new Document("filename", "README.md")).first();
+        readme = bucket.find(new Document("filename", "README.md")).first();
+        bson = bucket.find(new Document("filename", "orders.bson")).first();
     }
 
     @AfterClass
     public static void tearDownClass() {
-        cleanReadmeFiles();
+        cleanFile("README.md");
+        cleanFile("orders.bson");
     }
 
     private Configuration getConfiguration() {
@@ -107,7 +128,8 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
     @Test
     public void testGetSplits() throws IOException, InterruptedException {
         assertEquals(
-          (int) Math.ceil(file.getLength() / (float) file.getChunkSize()),
+          (int) Math.ceil(
+            readme.getLength() / (float) readme.getChunkSize()),
           getSplits().size());
     }
 
@@ -121,7 +143,7 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
         when(context.getConfiguration()).thenReturn(conf);
         int totalSections = 0;
         for (InputSplit split : splits) {
-            RecordReader reader = new GridFSInputFormat.GridFSRecordReader();
+            RecordReader reader = new GridFSInputFormat.GridFSTextRecordReader();
             reader.initialize(split, context);
             while (reader.nextKeyValue()) {
                 ++totalSections;
@@ -133,29 +155,117 @@ public class GridFSInputFormatTest extends BaseHadoopTest {
     @Test
     public void testRecordReaderNoDelimiter()
       throws IOException, InterruptedException {
-        int bufferPosition = 0;
-        byte[] buff = new byte[readmeBytes * 2];
         List<InputSplit> splits = getSplits();
         Configuration conf = getConfiguration();
         // Empty delimiter == no delimiter.
         MongoConfigUtil.setGridFSDelimiterPattern(conf, "");
         TaskAttemptContext context = mock(TaskAttemptContext.class);
         when(context.getConfiguration()).thenReturn(conf);
-        Text text;
+        StringBuilder fileText = new StringBuilder();
         for (InputSplit split : splits) {
-            GridFSInputFormat.GridFSRecordReader reader =
-              new GridFSInputFormat.GridFSRecordReader();
+            GridFSInputFormat.GridFSTextRecordReader reader =
+              new GridFSInputFormat.GridFSTextRecordReader();
             reader.initialize(split, context);
             while (reader.nextKeyValue()) {
-                text = reader.getCurrentValue();
-                System.arraycopy(
-                  text.getBytes(), 0,
-                  buff, bufferPosition, text.getLength());
-                bufferPosition += text.getLength();
+                Text text = reader.getCurrentValue();
+                fileText.append(text.toString());
             }
         }
-        assertEquals(
-          fileContents.toString(), Text.decode(buff, 0, bufferPosition));
+        assertEquals(fileContents.toString(), fileText.toString());
+    }
+
+    @Test
+    public void testReadWholeFile() throws IOException, InterruptedException {
+        Configuration conf = getConfiguration();
+        MongoConfigUtil.setGridFSWholeFileSplit(conf, true);
+
+        JobContext jobContext = mock(JobContext.class);
+        when(jobContext.getConfiguration()).thenReturn(conf);
+
+        List<InputSplit> splits = inputFormat.getSplits(jobContext);
+        // Empty delimiter == no delimiter.
+        MongoConfigUtil.setGridFSDelimiterPattern(conf, "#+");
+        TaskAttemptContext context = mock(TaskAttemptContext.class);
+        when(context.getConfiguration()).thenReturn(conf);
+        Text text;
+        assertEquals(1, splits.size());
+        StringBuilder fileText = new StringBuilder();
+        for (InputSplit split : splits) {
+            GridFSInputFormat.GridFSTextRecordReader reader =
+              new GridFSInputFormat.GridFSTextRecordReader();
+            reader.initialize(split, context);
+            int i;
+            for (i = 0; reader.nextKeyValue(); ++i) {
+                text = reader.getCurrentValue();
+                fileText.append(text.toString());
+            }
+            assertEquals(readmeSections, i);
+        }
+        assertEquals(fileContents.toString(), fileText.toString());
+    }
+
+    @Test
+    public void testReadWholeFileNoDelimiter()
+      throws IOException, InterruptedException {
+        Configuration conf = getConfiguration();
+        MongoConfigUtil.setGridFSWholeFileSplit(conf, true);
+
+        JobContext jobContext = mock(JobContext.class);
+        when(jobContext.getConfiguration()).thenReturn(conf);
+
+        List<InputSplit> splits = inputFormat.getSplits(jobContext);
+        // Empty delimiter == no delimiter.
+        MongoConfigUtil.setGridFSDelimiterPattern(conf, "");
+        TaskAttemptContext context = mock(TaskAttemptContext.class);
+        when(context.getConfiguration()).thenReturn(conf);
+        Text text;
+        assertEquals(1, splits.size());
+        String fileText = null;
+        for (InputSplit split : splits) {
+            GridFSInputFormat.GridFSTextRecordReader reader =
+              new GridFSInputFormat.GridFSTextRecordReader();
+            reader.initialize(split, context);
+            int i;
+            for (i = 0; reader.nextKeyValue(); ++i) {
+                text = reader.getCurrentValue();
+                fileText = text.toString();
+            }
+            assertEquals(1, i);
+        }
+        assertEquals(fileContents.toString(), fileText);
+    }
+
+    @Test
+    public void testReadBinaryFiles()
+      throws IOException, InterruptedException, URISyntaxException {
+        Configuration conf = getConfiguration();
+        MongoConfigUtil.setQuery(conf,
+          new BasicDBObject("filename", "orders.bson"));
+        MongoConfigUtil.setGridFSWholeFileSplit(conf, true);
+        MongoConfigUtil.setGridFSReadBinary(conf, true);
+
+        JobContext context = mock(JobContext.class);
+        when(context.getConfiguration()).thenReturn(conf);
+        TaskAttemptContext taskContext = mock(TaskAttemptContext.class);
+        when(taskContext.getConfiguration()).thenReturn(conf);
+
+        List<InputSplit> splits = inputFormat.getSplits(context);
+        assertEquals(1, splits.size());
+        for (InputSplit split : splits) {
+            GridFSInputFormat.GridFSBinaryRecordReader reader =
+              new GridFSInputFormat.GridFSBinaryRecordReader();
+            reader.initialize(split, taskContext);
+            byte[] buff = null;
+            int i;
+            for (i = 0; reader.nextKeyValue(); ++i) {
+                BytesWritable writable = reader.getCurrentValue();
+                buff = writable.copyBytes();
+            }
+            // Only one record to read on the split.
+            assertEquals(1, i);
+            assertNotNull(buff);
+            assertEquals(bson.getLength(), buff.length);
+        }
     }
 
 }

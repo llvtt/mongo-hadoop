@@ -124,6 +124,8 @@ public final class MongoConfigUtil {
     public static final String GRIDFS_DEFAULT_DELIMITER = "(\n|\r\n)";
     public static final String GRIDFS_WHOLE_FILE_SPLIT =
       "mongo.gridfs.whole_file";
+    public static final String GRIDFS_READ_BINARY =
+      "mongo.gridfs.read_binary";
 
     /**
      * <p>
@@ -947,9 +949,18 @@ public final class MongoConfigUtil {
         return conf.getBoolean(GRIDFS_WHOLE_FILE_SPLIT, false);
     }
 
-    public static void setGridfsWholeFileSplit(
+    public static void setGridFSWholeFileSplit(
       final Configuration conf, final boolean split) {
         conf.setBoolean(GRIDFS_WHOLE_FILE_SPLIT, split);
+    }
+
+    public static boolean isGridFSReadBinary(final Configuration conf) {
+        return conf.getBoolean(GRIDFS_READ_BINARY, false);
+    }
+
+    public static void setGridFSReadBinary(
+      final Configuration conf, final boolean readBinary) {
+        conf.setBoolean(GRIDFS_READ_BINARY, readBinary);
     }
 
     public static void setNoTimeout(final Configuration conf, final boolean value) {

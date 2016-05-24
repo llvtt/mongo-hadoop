@@ -10,6 +10,8 @@ import com.mongodb.hadoop.util.MongoConfigUtil;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.BinaryComparable;
+import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.InputFormat;
@@ -22,6 +24,7 @@ import org.bson.types.ObjectId;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.util.LinkedList;
@@ -29,7 +32,8 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
+public class GridFSInputFormat
+  extends InputFormat<NullWritable, BinaryComparable> {
 
     private static final Log LOG = LogFactory.getLog(GridFSInputFormat.class);
 
@@ -76,10 +80,77 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
     }
 
     @Override
-    public RecordReader<NullWritable, Text>
+    public RecordReader<NullWritable, BinaryComparable>
     createRecordReader(final InputSplit split, final TaskAttemptContext context)
       throws IOException, InterruptedException {
-        return new GridFSRecordReader();
+        if (MongoConfigUtil.isGridFSReadBinary(context.getConfiguration())) {
+            // TODO: Read GridFS files as binary files.
+            return new GridFSBinaryRecordReader();
+        } else {
+            // Read GridFS files as text.
+            return new GridFSTextRecordReader();
+        }
+    }
+
+    static class GridFSBinaryRecordReader
+      extends RecordReader<NullWritable, BinaryComparable> {
+        private final BytesWritable bw = new BytesWritable();
+        private GridFSSplit split;
+        private InputStream stream;
+        private boolean readLast;
+        private byte[] buff;
+
+        @Override
+        public void initialize(
+          final InputSplit split, final TaskAttemptContext context)
+          throws IOException, InterruptedException {
+            this.split = (GridFSSplit) split;
+            readLast = false;
+            buff = new byte[1024 * 1024 * 16];
+            stream = this.split.getData();
+        }
+
+        @Override
+        public boolean nextKeyValue() throws IOException, InterruptedException {
+            // Read the whole split once.
+            if (readLast)
+                return false;
+
+            int totalBytes = 0, bytesRead;
+            do {
+                bytesRead = stream.read(
+                  buff, totalBytes, buff.length - totalBytes);
+                if (bytesRead > 0) {
+                    totalBytes += bytesRead;
+                }
+            } while (bytesRead > 0);
+            LOG.info("binary reader: read " + totalBytes + " total bytes");
+            bw.set(buff, 0, totalBytes);
+            readLast = true;
+            return true;
+        }
+
+        @Override
+        public NullWritable getCurrentKey()
+          throws IOException, InterruptedException {
+            return NullWritable.get();
+        }
+
+        @Override
+        public BytesWritable getCurrentValue()
+          throws IOException, InterruptedException {
+            return bw;
+        }
+
+        @Override
+        public float getProgress() throws IOException, InterruptedException {
+            return readLast ? 1.0f : 0.0f;
+        }
+
+        @Override
+        public void close() throws IOException {
+            stream.close();
+        }
     }
 
     static class ChunkReadingCharSequence implements CharSequence, Closeable {
@@ -143,7 +214,11 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
          * @return the contents of the chunk as a CharSequence (a String).
          */
         public CharSequence chunkContents() {
-            return subSequence(0, Math.min(chunkSize, length()));
+            return subSequence(0, Math.min(chunkSize, length));
+        }
+
+        public CharSequence fileContents() {
+            return subSequence(0, length);
         }
 
         @Override
@@ -152,13 +227,15 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
         }
     }
 
-    static class GridFSRecordReader extends RecordReader<NullWritable, Text> {
+    static class GridFSTextRecordReader
+      extends RecordReader<NullWritable, BinaryComparable> {
 
         private GridFSSplit split;
         private final Text text = new Text();
         private int totalMatches = 0;
         private long chunkSize;
-        private boolean readLast = false;
+        private boolean readLast;
+        private boolean readWholeFile;
         private Pattern delimiterPattern;
         private Matcher matcher;
         private int previousMatchIndex = 0;
@@ -168,20 +245,22 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
         public void initialize(final InputSplit split, final TaskAttemptContext context)
           throws IOException, InterruptedException {
             this.split = (GridFSSplit) split;
+            LOG.info("reading split: " + split);
             Configuration conf = context.getConfiguration();
 
             String patternString =
               MongoConfigUtil.getGridFSDelimiterPattern(conf);
             chunkSize = this.split.getChunkSize();
             chunkData = new ChunkReadingCharSequence(this.split);
+            readLast = false;
+            readWholeFile = MongoConfigUtil.isGridFSWholeFileSplit(conf);
             if (!(null == patternString || patternString.isEmpty())) {
                 delimiterPattern = Pattern.compile(patternString);
                 matcher = delimiterPattern.matcher(chunkData);
 
                 // Skip past the first delimiter if this is not the first chunk.
                 if (this.split.getChunkId() > 0) {
-                    CharSequence skipped = nextToken();
-                    LOG.info("skipping past already-read token: " + skipped);
+                    nextToken();
                 }
             }
         }
@@ -209,9 +288,14 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
                 return false;
             }
 
+            // TODO: what if we want to read whole file?
             // No delimiter being used, and we haven't returned anything yet.
             if (null == matcher) {
-                text.set(chunkData.chunkContents().toString());
+                if (readWholeFile) {
+                    text.set(chunkData.fileContents().toString());
+                } else {
+                    text.set(chunkData.chunkContents().toString());
+                }
                 ++totalMatches;
                 readLast = true;
                 return true;
@@ -221,10 +305,11 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
             CharSequence nextToken = nextToken();
             if (nextToken != null) {
                 // Read one more token past the end of the split.
-                if (previousMatchIndex >= chunkSize) {
+                if (!readWholeFile && previousMatchIndex >= chunkSize) {
                     readLast = true;
                 }
                 text.set(nextToken.toString());
+                LOG.info("read token: " + nextToken.toString());
                 ++totalMatches;
                 return true;
             } else if (LOG.isDebugEnabled()) {

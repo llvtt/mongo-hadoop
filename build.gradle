@@ -243,38 +243,38 @@ configure(subprojects) {
     }
 }
 
-task apidocs {
-    // Depends on "javadoc" task for all projects.
-    dependsOn {
-        subprojects*.getTasksByName("javadoc", true)
-    }
-    // Exclude examples.
-    def noExamples = subprojects.findAll {
-        proj -> !proj.getName().contains("examples/")
-    }
-    // Create docs directory if it doesn't already exist.
-    def docsHomeDir = new File(docsHome)
-    if (!docsHomeDir.exists()) {
-        docsHomeDir.mkdir()
-    }
-    noExamples.each {
-        proj -> copy {
-            from new File(proj.docsDir, "javadoc")
-            into new File(docsHomeDir, proj.getName())
-        }
-    }
-    // Generate an index.html.
-    new File("docs/index.html").withWriter { writer ->
-        writer.write("<html><head><title>MongoDB Hadoop Connector " +
-                "Modules</title></head><body><h3>MongoDB Hadoop Connector " +
-                "Modules</h3><ul>")
-        noExamples.each { proj ->
-            writer.append("<li><a href='" + proj.getName() + "/index.html' " +
-                    "rel='nofollow'>" + proj.getName() + "</li>")
-        }
-        writer.append("</ul></body></html>")
-    }
-}
+//task apidocs {
+//    // Depends on "javadoc" task for all projects.
+//    dependsOn {
+//        subprojects*.getTasksByName("javadoc", true)
+//    }
+//    // Exclude examples.
+//    def noExamples = subprojects.findAll {
+//        proj -> !proj.getName().contains("examples/")
+//    }
+//    // Create docs directory if it doesn't already exist.
+//    def docsHomeDir = new File(docsHome)
+//    if (!docsHomeDir.exists()) {
+//        docsHomeDir.mkdir()
+//    }
+//    noExamples.each {
+//        proj -> copy {
+//            from new File(proj.docsDir, "javadoc")
+//            into new File(docsHomeDir, proj.getName())
+//        }
+//    }
+//    // Generate an index.html.
+//    new File("docs/index.html").withWriter { writer ->
+//        writer.write("<html><head><title>MongoDB Hadoop Connector " +
+//                "Modules</title></head><body><h3>MongoDB Hadoop Connector " +
+//                "Modules</h3><ul>")
+//        noExamples.each { proj ->
+//            writer.append("<li><a href='" + proj.getName() + "/index.html' " +
+//                    "rel='nofollow'>" + proj.getName() + "</li>")
+//        }
+//        writer.append("</ul></body></html>")
+//    }
+//}
 
 idea {
     module {
