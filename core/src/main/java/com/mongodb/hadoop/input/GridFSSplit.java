@@ -33,6 +33,14 @@ public class GridFSSplit extends InputSplit
       final MongoClientURI inputURI,
       final ObjectId fileId,
       final int chunkSize,
+      final long fileLength) {
+        this(inputURI, fileId, chunkSize, fileLength, 0);
+    }
+
+    public GridFSSplit(
+      final MongoClientURI inputURI,
+      final ObjectId fileId,
+      final int chunkSize,
       final long fileLength,
       final int chunkId) {
         this.inputURI = inputURI;

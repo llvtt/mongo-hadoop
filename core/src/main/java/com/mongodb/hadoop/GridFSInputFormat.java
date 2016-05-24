@@ -41,23 +41,33 @@ public class GridFSInputFormat extends InputFormat<NullWritable, Text> {
           MongoConfigUtil.getInputCollection(conf);
         MongoClientURI inputURI = MongoConfigUtil.getInputURI(conf);
 
-        // One split per file chunk.
         GridFS gridFS = new GridFS(
           inputCollection.getDB(),
           inputCollection.getName());
 
         DBObject query = MongoConfigUtil.getQuery(conf);
         List<InputSplit> splits = new LinkedList<InputSplit>();
-
         for (GridFSDBFile file : gridFS.find(query)) {
-            for (int chunk = 0; chunk < file.numChunks(); ++chunk) {
+            // One split per file.
+            if (MongoConfigUtil.isGridFSWholeFileSplit(conf)) {
                 splits.add(
                   new GridFSSplit(
                     inputURI,
                     (ObjectId) file.getId(),
                     (int) file.getChunkSize(),
-                    file.getLength(),
-                    chunk));
+                    file.getLength()));
+            }
+            // One split per file chunk.
+            else {
+                for (int chunk = 0; chunk < file.numChunks(); ++chunk) {
+                    splits.add(
+                      new GridFSSplit(
+                        inputURI,
+                        (ObjectId) file.getId(),
+                        (int) file.getChunkSize(),
+                        file.getLength(),
+                        chunk));
+                }
             }
         }
 

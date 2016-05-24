@@ -122,6 +122,8 @@ public final class MongoConfigUtil {
     public static final String GRIDFS_DELIMITER_PATTERN =
       "mongo.gridfs.delimiter.pattern";
     public static final String GRIDFS_DEFAULT_DELIMITER = "(\n|\r\n)";
+    public static final String GRIDFS_WHOLE_FILE_SPLIT =
+      "mongo.gridfs.whole_file";
 
     /**
      * <p>
@@ -490,7 +492,9 @@ public final class MongoConfigUtil {
      */
     @Deprecated
     public static DBCollection getCollectionWithAuth(final MongoURI uri, final MongoURI authURI) {
-        return getCollectionWithAuth(new MongoClientURI(uri.toString()), new MongoClientURI(authURI.toString()));
+        return getCollectionWithAuth(
+          new MongoClientURI(uri.toString()),
+          new MongoClientURI(authURI.toString()));
     }
 
     /**
@@ -937,6 +941,15 @@ public final class MongoConfigUtil {
     public static void setGridFSDelimiterPattern(
       final Configuration conf, final String pattern) {
         conf.set(GRIDFS_DELIMITER_PATTERN, pattern);
+    }
+
+    public static boolean isGridFSWholeFileSplit(final Configuration conf) {
+        return conf.getBoolean(GRIDFS_WHOLE_FILE_SPLIT, false);
+    }
+
+    public static void setGridfsWholeFileSplit(
+      final Configuration conf, final boolean split) {
+        conf.setBoolean(GRIDFS_WHOLE_FILE_SPLIT, split);
     }
 
     public static void setNoTimeout(final Configuration conf, final boolean value) {
