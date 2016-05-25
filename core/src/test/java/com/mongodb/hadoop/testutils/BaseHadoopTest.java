@@ -107,27 +107,29 @@ public abstract class BaseHadoopTest {
         return builder;
     }
 
-    protected static File findProjectJar(
-      final File root, final String path, final boolean findTestJar) {
-        try {
-            final File file = new File(root, path).getCanonicalFile();
-            final File[] files = file.listFiles(new HadoopVersionFilter(findTestJar));
-            if (files.length == 0) {
-                throw new RuntimeException(format("Can't find jar.  project version = %s, path = %s, findTestJar = %s",
-                  PROJECT_VERSION, file, findTestJar));
-            }
-            return files[0];
-        } catch (final IOException e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
-    }
-
     protected static File findProjectJar(final File root) {
         return findProjectJar(root, false);
     }
 
     protected static File findProjectJar(final File root, final boolean findTestJar) {
-        return findProjectJar(root, "build/libs", findTestJar);
+        try {
+            File current = new File(".").getCanonicalFile();
+            File core = new File(current, "core");
+            while (!core.exists() && current.getParentFile().exists()) {
+                current = current.getParentFile();
+                core = new File(current, "core");
+            }
+
+            final File file = new File(root, "build/libs").getCanonicalFile();
+            final File[] files = file.listFiles(new HadoopVersionFilter(findTestJar));
+            if (files.length == 0) {
+                throw new RuntimeException(format("Can't find jar.  project version = %s, path = %s, findTestJar = %s",
+                                                  PROJECT_VERSION, file, findTestJar));
+            }
+            return files[0];
+        } catch (final IOException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
     }
 
     public static boolean isHadoopV1() {
