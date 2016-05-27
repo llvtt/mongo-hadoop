@@ -194,7 +194,9 @@ public class GridFSInputFormat
             try {
                 advanceToIndex(index);
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                throw new IndexOutOfBoundsException(
+                  "Could not advance stream to index: "
+                    + index + "; reason: " + e.getMessage());
             }
             return builder.charAt(index);
         }
