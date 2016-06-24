@@ -26,6 +26,7 @@ import com.mongodb.MongoClientURI;
 import com.mongodb.MongoURI;
 import com.mongodb.hadoop.input.MongoInputSplit;
 import com.mongodb.hadoop.util.MongoConfigUtil;
+import com.sun.istack.NotNull;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -34,6 +35,8 @@ import org.bson.BSONObject;
 import org.bson.types.MaxKey;
 import org.bson.types.MinKey;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,10 +73,10 @@ public abstract class MongoCollectionSplitter extends MongoSplitter {
      * host(s) by examining config.shards.
      * @return a Map of shard name onto shard hostnames
      */
-    protected Map<String, String> getShardsMap() {
+    protected Map<String, List<String>> getShardsMap() {
         DBCursor cur = null;
-        HashMap<String, String> shardsMap = new HashMap<String, String>();
-        DB configDB = null;
+        HashMap<String, List<String>> shardsMap = new HashMap<String, List<String>>();
+        DB configDB;
         try {
             configDB = getConfigDB();
             DBCollection shardsCollection = configDB.getCollection("shards");
@@ -86,7 +89,8 @@ public abstract class MongoCollectionSplitter extends MongoSplitter {
                 if (slashIndex > 0) {
                     host = host.substring(slashIndex + 1);
                 }
-                shardsMap.put((String) row.get("_id"), host);
+                shardsMap.put(
+                  (String) row.get("_id"), Arrays.asList(host.split("/")));
             }
         } finally {
             if (cur != null) {
@@ -129,10 +133,12 @@ public abstract class MongoCollectionSplitter extends MongoSplitter {
      * force a block of data to be read directly from the shard's servers directly, bypassing mongos entirely.
      *
      * @param originalUri  the URI to rewrite
-     * @param newServerUri the new host(s) to target, e.g. server1:port1[,server2:port2,...]
+     * @param newServerUris the new host(s) to target, e.g. server1:port1[,
+     *                      server2:port2,...]
      * @return the rewritten URI
      */
-    protected static MongoClientURI rewriteURI(final MongoClientURI originalUri, final String newServerUri) {
+    protected static MongoClientURI rewriteURI(
+      final MongoClientURI originalUri, final List<String> newServerUris) {
         String originalUriString = originalUri.toString();
         originalUriString = originalUriString.substring(MongoURI.MONGODB_PREFIX.length());
 
@@ -148,9 +154,21 @@ public abstract class MongoCollectionSplitter extends MongoSplitter {
         idx = originalUriString.indexOf("@");
         int serverStart = idx > 0 ? idx + 1 : 0;
 
+        // TODO: this method needs more attention anyway, since we're losing
+        // the replica set name!
         StringBuilder sb = new StringBuilder(originalUriString);
-        sb.replace(serverStart, serverEnd, newServerUri);
+        StringBuilder joinedHosts = new StringBuilder();
+        for (String host : newServerUris) {
+            joinedHosts.append(host + ",");
+        }
+        sb.replace(serverStart, serverEnd,
+          joinedHosts.substring(0, joinedHosts.length() - 1));
         return new MongoClientURI(MongoURI.MONGODB_PREFIX + sb);
+    }
+
+    protected static MongoClientURI rewriteURI(
+      final MongoClientURI originalURI, String newURI) {
+        return rewriteURI(originalURI, Collections.singletonList(newURI));
     }
 
     /**
