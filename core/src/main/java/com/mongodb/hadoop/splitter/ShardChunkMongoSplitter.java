@@ -30,12 +30,8 @@ import org.apache.hadoop.mapreduce.InputSplit;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
 
 /**
  * This class is an implementation of MongoSplitter which can be used on sharded collections. It gets the chunks information from the
@@ -63,8 +59,6 @@ public class ShardChunkMongoSplitter extends MongoCollectionSplitter {
         String inputNS = inputURI.getDatabase() + "." + inputURI.getCollection();
 
         DBCursor cur = chunksCollection.find(new BasicDBObject("ns", inputNS));
-
-        int numChunks = 0;
 
         Map<String, List<String>> shardsMap;
         try {
@@ -95,8 +89,7 @@ public class ShardChunkMongoSplitter extends MongoCollectionSplitter {
             }
         }
 
-        Map<String, LinkedList<InputSplit>> shardToSplits = new HashMap<String, LinkedList<InputSplit>>();
-
+        List<InputSplit> splits = new ArrayList<InputSplit>(cur.count());
         try {
             while (cur.hasNext()) {
                 final BasicDBObject row = (BasicDBObject) cur.next();
@@ -135,51 +128,13 @@ public class ShardChunkMongoSplitter extends MongoCollectionSplitter {
                         chunkSplit.setInputURI(rewriteURI(inputURI, mongosHost));
                     }
                 }
-                // TODO: what is this doing?
-                //   A. Grouping splits by the shard they're coming from. TODO: why?
-                // If there is no entry yet for the current shard's name...
-                LinkedList<InputSplit> shardList = shardToSplits.get(shard);
-                if (shardList == null) {
-                    // Initialize this map with an empty LinkedList for the shard.
-                    shardList = new LinkedList<InputSplit>();
-                    shardToSplits.put(shard, shardList);
-                }
                 // Add this split to the list for the current shard.
                 chunkSplit.setKeyField(MongoConfigUtil.getInputKey(getConfiguration()));
-                shardList.add(chunkSplit);
-                numChunks++;
+                splits.add(chunkSplit);
             }
         } finally {
             MongoConfigUtil.close(configDB.getMongo());
         }
-
-        List<InputSplit> splits = new ArrayList<InputSplit>(numChunks);
-        for (Entry<String, LinkedList<InputSplit>> entry : shardToSplits.entrySet()) {
-            for (InputSplit split : entry.getValue()) {
-                splits.add(split);
-            }
-        }
-
-//        final List<InputSplit> splits = new ArrayList<InputSplit>(numChunks);
-//        int splitIndex = 0;
-//        while (splitIndex < numChunks) {
-//            Set<String> shardSplitsToRemove = new HashSet<String>();
-//            // For each (shard, list of splits for that shard)
-//            for (Entry<String, LinkedList<InputSplit>> shardSplits : shardToSplits.entrySet()) {
-//                LinkedList<InputSplit> shardSplitsList = shardSplits.getValue();
-//                // Get the last split?
-//                InputSplit split = shardSplitsList.pop();
-//                splits.add(splitIndex, split);
-//                splitIndex++;
-//                if (shardSplitsList.isEmpty()) {
-//                    // Add the shard name for the last split? Why?
-//                    shardSplitsToRemove.add(shardSplits.getKey());
-//                }
-//            }
-//            for (String shardName : shardSplitsToRemove) {
-//                shardToSplits.remove(shardName);
-//            }
-//        }
 
         if (MongoConfigUtil.isFilterEmptySplitsEnabled(getConfiguration())) {
             return filterEmptySplits(splits);
