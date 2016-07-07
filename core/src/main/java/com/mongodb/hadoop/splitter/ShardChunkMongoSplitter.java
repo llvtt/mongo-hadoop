@@ -58,7 +58,7 @@ public class ShardChunkMongoSplitter extends MongoCollectionSplitter {
      * @param shardsMap A map of shard name -> an array of hostnames.
      * @return A list of InputSplits.
      */
-    public List<InputSplit> calculateSplitsFromChunks(
+    List<InputSplit> calculateSplitsFromChunks(
       final List<DBObject> chunks, final Map<String, List<String>> shardsMap)
       throws SplitFailedException {
 
@@ -71,9 +71,6 @@ public class ShardChunkMongoSplitter extends MongoCollectionSplitter {
         }
         Map<String, String> mongosMap = null;
         if (mongosHostNames.size() > 0) {
-            // TODO: change log message?
-            LOG.info("Using multiple mongos instances (round robin) for reading input.");
-
             // Build a map of host -> mongos host string (incl. port)
             mongosMap = new HashMap<String, String>();
             for (String mongosHostName : mongosHostNames) {
@@ -104,6 +101,8 @@ public class ShardChunkMongoSplitter extends MongoCollectionSplitter {
                 // Try to use a mongos collocated with one of the shard hosts for the input
                 // split. If the user has their Hadoop/MongoDB clusters configured correctly,
                 // this will allow for reading without having to transfer data over a network.
+                // Note that MongoInputSplit.getLocations() just returns the hostnames from its
+                // input URI.
                 List<String> chunkHosts = shardsMap.get(shard);
                 String mongosHost = null;
                 for (String chunkHost : chunkHosts) {
@@ -117,6 +116,7 @@ public class ShardChunkMongoSplitter extends MongoCollectionSplitter {
                     // Fall back just to using the given input URI.
                     chunkSplit.setInputURI(inputURI);
                 } else {
+                    LOG.info("Will read split " + chunkSplit + " from mongos " + mongosHost);
                     chunkSplit.setInputURI(rewriteURI(inputURI, mongosHost));
                 }
             }

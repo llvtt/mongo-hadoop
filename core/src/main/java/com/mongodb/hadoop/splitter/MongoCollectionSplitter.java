@@ -89,8 +89,7 @@ public abstract class MongoCollectionSplitter extends MongoSplitter {
                 if (slashIndex > 0) {
                     host = host.substring(slashIndex + 1);
                 }
-                shardsMap.put(
-                  (String) row.get("_id"), Arrays.asList(host.split("/")));
+                shardsMap.put(row.getString("_id"), Arrays.asList(host.split(",")));
             }
         } finally {
             if (cur != null) {
@@ -154,12 +153,10 @@ public abstract class MongoCollectionSplitter extends MongoSplitter {
         idx = originalUriString.indexOf("@");
         int serverStart = idx > 0 ? idx + 1 : 0;
 
-        // TODO: this method needs more attention anyway, since we're losing
-        // the replica set name!
         StringBuilder sb = new StringBuilder(originalUriString);
         StringBuilder joinedHosts = new StringBuilder();
         for (String host : newServerUris) {
-            joinedHosts.append(host + ",");
+            joinedHosts.append(host).append(',');
         }
         sb.replace(serverStart, serverEnd,
           joinedHosts.substring(0, joinedHosts.length() - 1));
