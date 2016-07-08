@@ -19,7 +19,6 @@ package com.mongodb.hadoop.splitter;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
-import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 import com.mongodb.MongoClientURI;
 import com.mongodb.hadoop.input.MongoInputSplit;
@@ -28,7 +27,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.InputSplit;
-import org.bson.BSONObject;
 
 import java.util.ArrayList;
 import java.util.HashMap;

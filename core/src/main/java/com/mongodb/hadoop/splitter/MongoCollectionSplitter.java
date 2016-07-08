@@ -26,7 +26,6 @@ import com.mongodb.MongoClientURI;
 import com.mongodb.MongoURI;
 import com.mongodb.hadoop.input.MongoInputSplit;
 import com.mongodb.hadoop.util.MongoConfigUtil;
-import com.sun.istack.NotNull;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -164,7 +163,7 @@ public abstract class MongoCollectionSplitter extends MongoSplitter {
     }
 
     protected static MongoClientURI rewriteURI(
-      final MongoClientURI originalURI, String newURI) {
+      final MongoClientURI originalURI, final String newURI) {
         return rewriteURI(originalURI, Collections.singletonList(newURI));
     }
 
